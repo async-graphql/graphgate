@@ -1,0 +1,15 @@
+[package]
+name = "graphgate-transports"
+version = "0.1.0"
+authors = ["Sunli <scott_s829@163.com>"]
+edition = "2018"
+
+[dependencies]
+graphgate-core = { version = "0.1.0", path = "../core" }
+
+reqwest = { version = "0.11.0", default-features = false, features = ["rustls-tls", "gzip", "brotli", "json"] }
+value= { version = "2.5.9", package = "async-graphql-value" }
+async-trait = "0.1.42"
+futures-util = "0.3.13"
+anyhow = "1.0.38"
+url = { version = "2.2.0", features = ["serde"] }

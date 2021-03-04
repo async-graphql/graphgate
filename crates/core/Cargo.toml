@@ -1,0 +1,17 @@
+[package]
+name = "graphgate-core"
+version = "0.1.0"
+authors = ["Sunli <scott_s829@163.com>"]
+edition = "2018"
+
+[dependencies]
+parser = { version = "2.5.9", package = "async-graphql-parser" }
+value = { version = "2.5.9", package = "async-graphql-value" }
+thiserror = "1.0.24"
+indexmap = "1.6.1"
+serde = "1.0.123"
+once_cell = "1.7.0"
+spin = "0.7.1"
+futures-util = "0.3.13"
+tracing = "0.1.25"
+async-trait = "0.1.42"

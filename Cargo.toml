@@ -1,0 +1,28 @@
+[package]
+name = "graphgate"
+version = "0.1.0"
+authors = ["Sunli <scott_s829@163.com>"]
+edition = "2018"
+
+[dependencies]
+graphgate-core = { version = "0.1.0", path = "./crates/core" }
+graphgate-transports = { version = "0.1.0", path = "./crates/transports" }
+
+parser = { version = "2.5.9", package = "async-graphql-parser" }
+value = { version = "2.5.9", package = "async-graphql-value" }
+tokio = { version = "1.2.0", features = ["rt-multi-thread", "time", "macros", "sync"] }
+warp = "0.3.0"
+toml = "0.5.8"
+serde = { version = "1.0.123", features = ["derive"] }
+clap = "2.33.3"
+anyhow = "1.0.38"
+futures-util = "0.3.13"
+tracing = "0.1.25"
+tracing-subscriber = "0.2.16"
+serde_json = "1.0.64"
+
+[workspace]
+members = [
+    "crates/core",
+    "crates/transports"
+]

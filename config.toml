@@ -1,0 +1,11 @@
+[[services]]
+name = "accounts"
+url = "http://localhost:4001"
+
+[[services]]
+name = "products"
+url = "http://localhost:4002"
+
+[[services]]
+name = "reviews"
+url = "http://localhost:4003"
