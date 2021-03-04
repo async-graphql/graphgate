@@ -26,7 +26,7 @@ pub fn resolve_obj(
         let key = field
             .alias
             .as_ref()
-            .map(|alias| alias.clone())
+            .cloned()
             .unwrap_or_else(|| field.name.clone());
         obj.insert(key, resolve_fn(field.name.as_str(), field));
     }

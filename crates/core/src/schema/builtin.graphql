@@ -1,4 +1,39 @@
 """
+The `Int` scalar type represents non-fractional whole numeric values.
+"""
+scalar Int
+
+"""
+The `Float` scalar type represents signed double-precision fractional values as specified by [IEEE 754](https://en.wikipedia.org/wiki/IEEE_floating_point).
+"""
+scalar Float
+
+"""
+The `String` scalar type represents textual data, represented as UTF-8 character sequences. The String type is most often used by GraphQL to represent free-form human-readable text.
+"""
+scalar String
+
+"""
+The `Boolean` scalar type represents `true` or `false`.
+"""
+scalar Boolean
+
+"""
+ID scalar
+"""
+scalar ID
+
+"""
+Directs the executor to include this field or fragment only when the `if` argument is true.
+"""
+directive @include("Included when true." if: Boolean!) on FIELD | FRAGMENT_SPREAD | INLINE_FRAGMENT
+
+"""
+Directs the executor to skip this field or fragment when the `if` argument is true.
+"""
+directive @skip("Skipped when true." if: Boolean!)  on FIELD | FRAGMENT_SPREAD | INLINE_FRAGMENT
+
+"""
 A Directive can be adjacent to many parts of the GraphQL language, a __DirectiveLocation describes one such possible adjacencies.
 """
 enum __DirectiveLocation {

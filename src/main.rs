@@ -170,18 +170,19 @@ async fn serve(
                     if let Some(operation) = request.operation {
                         plan_builder = plan_builder.operation_name(operation);
                     }
-                    let plan = plan_builder.plan();
-                    let executor = Executor::new(&composed_schema, coordinator);
-                    let resp = match serde_json::to_string(&executor.execute(&plan).await) {
-                        Ok(resp) => resp,
-                        Err(err) => {
+                    let plan = match plan_builder.plan() {
+                        Ok(plan) => plan,
+                        Err(response) => {
                             return Ok(HttpResponse::builder()
-                                .status(StatusCode::INTERNAL_SERVER_ERROR)
-                                .body(err.to_string()));
+                                .status(StatusCode::OK)
+                                .body(serde_json::to_string(&response).unwrap()))
                         }
                     };
+                    let executor = Executor::new(&composed_schema, coordinator);
                     Ok::<_, std::convert::Infallible>(
-                        HttpResponse::builder().status(StatusCode::OK).body(resp),
+                        HttpResponse::builder()
+                            .status(StatusCode::OK)
+                            .body(serde_json::to_string(&executor.execute(&plan).await).unwrap()),
                     )
                 }
             }

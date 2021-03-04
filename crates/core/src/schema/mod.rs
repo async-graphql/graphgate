@@ -1,9 +1,11 @@
+mod composed_schema;
 mod error;
-mod schema;
+mod type_ext;
 
-pub use error::CombineError;
-pub use schema::{
+pub use composed_schema::{
     ComposedSchema, Deprecation, KeyFields, MetaEnumValue, MetaField, MetaInputValue, MetaType,
     TypeKind,
 };
+pub use error::CombineError;
+pub use type_ext::TypeExt;
 pub use value::ConstValue;

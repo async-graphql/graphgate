@@ -18,8 +18,9 @@ use super::types::{
     FetchEntity, FetchEntityGroup, FetchEntityKey, FieldRef, RequiredRef, RootGroup, SelectionRef,
     SelectionRefSet,
 };
-use crate::schema::{KeyFields, MetaField, MetaType, TypeKind};
-use crate::ComposedSchema;
+use crate::schema::{ComposedSchema, KeyFields, MetaField, MetaType, TypeKind};
+use crate::validation::check_rules;
+use crate::{Response, ServerError};
 
 struct Context<'a> {
     schema: &'a ComposedSchema,
@@ -54,7 +55,21 @@ impl<'a> PlanBuilder<'a> {
         Self { variables, ..self }
     }
 
-    pub fn plan(&self) -> PlanNode {
+    pub fn plan(&self) -> Result<PlanNode, Response> {
+        let rule_errors = check_rules(self.schema, &self.document, &self.variables);
+        if !rule_errors.is_empty() {
+            return Err(Response {
+                data: ConstValue::Null,
+                errors: rule_errors
+                    .into_iter()
+                    .map(|err| ServerError {
+                        message: err.message,
+                        locations: err.locations,
+                    })
+                    .collect(),
+            });
+        }
+
         let fragments = &self.document.fragments;
         let operation_definition = get_operation(&self.document, self.operation_name.as_deref());
         let mut ctx = Context {
@@ -76,7 +91,8 @@ impl<'a> PlanBuilder<'a> {
         };
 
         if let Some(root_type) = ctx.schema.types.get(root_type) {
-            ctx.build_root_selection_set(root_type, &operation_definition.node.selection_set.node)
+            Ok(ctx
+                .build_root_selection_set(root_type, &operation_definition.node.selection_set.node))
         } else {
             unreachable!("The query validator should find this error.")
         }

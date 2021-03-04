@@ -3,13 +3,14 @@ use std::ops::Deref;
 
 use indexmap::{IndexMap, IndexSet};
 use parser::types::{
-    self, BaseType, ConstDirective, DocumentOperations, EnumType, InputObjectType, InterfaceType,
-    ObjectType, SchemaDefinition, Selection, SelectionSet, ServiceDocument, Type, TypeDefinition,
-    TypeSystemDefinition, UnionType,
+    self, BaseType, ConstDirective, DirectiveDefinition, DirectiveLocation, DocumentOperations,
+    EnumType, InputObjectType, InterfaceType, ObjectType, SchemaDefinition, Selection,
+    SelectionSet, ServiceDocument, Type, TypeDefinition, TypeSystemDefinition, UnionType,
 };
 use parser::{Positioned, Result};
 use value::{ConstValue, Name};
 
+use super::type_ext::TypeExt;
 use super::CombineError;
 
 #[derive(Debug, Eq, PartialEq)]
@@ -98,13 +99,80 @@ pub struct MetaType {
     pub input_fields: IndexMap<Name, MetaInputValue>,
 }
 
+impl MetaType {
+    #[inline]
+    pub fn field_by_name(&self, name: &str) -> Option<&MetaField> {
+        self.fields.get(name)
+    }
+
+    #[inline]
+    pub fn is_composite(&self) -> bool {
+        matches!(
+            self.kind,
+            TypeKind::Object | TypeKind::Interface | TypeKind::Union
+        )
+    }
+
+    #[inline]
+    pub fn is_abstract(&self) -> bool {
+        matches!(self.kind, TypeKind::Interface | TypeKind::Union)
+    }
+
+    #[inline]
+    pub fn is_leaf(&self) -> bool {
+        matches!(self.kind, TypeKind::Enum | TypeKind::Scalar)
+    }
+
+    #[inline]
+    pub fn is_input(&self) -> bool {
+        matches!(
+            self.kind,
+            TypeKind::Enum | TypeKind::Scalar | TypeKind::InputObject
+        )
+    }
+
+    #[inline]
+    pub fn is_possible_type(&self, type_name: &str) -> bool {
+        match self.kind {
+            TypeKind::Interface | TypeKind::Union => self.possible_types.contains(type_name),
+            TypeKind::Object => self.name == type_name,
+            _ => false,
+        }
+    }
+
+    pub fn type_overlap(&self, ty: &MetaType) -> bool {
+        if std::ptr::eq(self, ty) {
+            return true;
+        }
+
+        match (self.is_abstract(), ty.is_abstract()) {
+            (true, true) => self
+                .possible_types
+                .iter()
+                .any(|type_name| ty.is_possible_type(type_name)),
+            (true, false) => self.is_possible_type(&ty.name),
+            (false, true) => ty.is_possible_type(&self.name),
+            (false, false) => false,
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct MetaDirective {
+    pub name: Name,
+    pub description: Option<String>,
+    pub locations: Vec<DirectiveLocation>,
+    pub arguments: IndexMap<Name, MetaInputValue>,
+}
+
 #[derive(Debug, Default)]
 pub struct ComposedSchema {
-    pub query_type: Option<Name>,
-    pub mutation_type: Option<Name>,
-    pub subscription_type: Option<Name>,
-    pub types: HashMap<Name, MetaType>,
-    pub services: IndexMap<String, Vec<String>>,
+    pub(crate) query_type: Option<Name>,
+    pub(crate) mutation_type: Option<Name>,
+    pub(crate) subscription_type: Option<Name>,
+    pub(crate) types: HashMap<Name, MetaType>,
+    pub(crate) directives: HashMap<Name, MetaDirective>,
+    pub(crate) services: IndexMap<String, Vec<String>>,
 }
 
 impl ComposedSchema {
@@ -276,7 +344,7 @@ impl ComposedSchema {
     }
 
     #[inline]
-    pub fn query_type(&self) -> &str {
+    pub(crate) fn query_type(&self) -> &str {
         self.query_type
             .as_ref()
             .map(|name| name.as_str())
@@ -284,22 +352,26 @@ impl ComposedSchema {
     }
 
     #[inline]
-    pub fn mutation_type(&self) -> Option<&str> {
+    pub(crate) fn mutation_type(&self) -> Option<&str> {
         self.mutation_type.as_ref().map(|name| name.as_str())
     }
 
     #[inline]
-    pub fn subscription_type(&self) -> Option<&str> {
+    pub(crate) fn subscription_type(&self) -> Option<&str> {
         self.subscription_type.as_ref().map(|name| name.as_str())
     }
 
     #[inline]
-    pub fn get_type(&self, ty: &Type) -> Option<&MetaType> {
+    pub(crate) fn get_type(&self, ty: &Type) -> Option<&MetaType> {
         let name = match &ty.base {
             BaseType::Named(name) => name.as_str(),
             BaseType::List(ty) => return self.get_type(ty),
         };
         self.types.get(name)
+    }
+
+    pub(crate) fn concrete_type_by_name(&self, ty: &Type) -> Option<&MetaType> {
+        self.types.get(ty.concrete_typename())
     }
 }
 
@@ -538,6 +610,30 @@ fn convert_input_value_definition(arg: parser::types::InputValueDefinition) -> M
     }
 }
 
+fn convert_directive_definition(directive_definition: DirectiveDefinition) -> MetaDirective {
+    MetaDirective {
+        name: directive_definition.name.node,
+        description: directive_definition
+            .description
+            .map(|directive_definition| directive_definition.node),
+        locations: directive_definition
+            .locations
+            .into_iter()
+            .map(|location| location.node)
+            .collect(),
+        arguments: directive_definition
+            .arguments
+            .into_iter()
+            .map(|arg| {
+                (
+                    arg.node.name.node.clone(),
+                    convert_input_value_definition(arg.node),
+                )
+            })
+            .collect(),
+    }
+}
+
 fn get_deprecated(directives: &[Positioned<ConstDirective>]) -> Deprecation {
     directives
         .iter()
@@ -555,42 +651,27 @@ fn has_directive(directives: &[Positioned<ConstDirective>], name: &str) -> bool 
         .any(|directive| directive.node.name.node.as_str() == name)
 }
 
-fn add_builtin_scalar(composed_schema: &mut ComposedSchema, name: Name) {
-    composed_schema.types.insert(
-        name.clone(),
-        MetaType {
-            description: None,
-            name,
-            kind: TypeKind::Scalar,
-            owner: None,
-            keys: Default::default(),
-            is_introspection: false,
-            implements: Default::default(),
-            fields: Default::default(),
-            possible_types: Default::default(),
-            enum_values: Default::default(),
-            input_fields: Default::default(),
-        },
-    );
-}
-
-fn add_builtin_scalars(composed_schema: &mut ComposedSchema) {
-    add_builtin_scalar(composed_schema, Name::new("Int"));
-    add_builtin_scalar(composed_schema, Name::new("Float"));
-    add_builtin_scalar(composed_schema, Name::new("String"));
-    add_builtin_scalar(composed_schema, Name::new("Boolean"));
-    add_builtin_scalar(composed_schema, Name::new("ID"));
-}
-
 fn finish_schema(composed_schema: &mut ComposedSchema) {
-    let introspection_doc = parser::parse_schema(include_str!("introspection.graphql")).unwrap();
-    for definition in introspection_doc.definitions.into_iter() {
-        if let TypeSystemDefinition::Type(type_definition) = definition {
-            let mut type_definition = convert_type_definition(type_definition.node);
-            type_definition.is_introspection = true;
-            composed_schema
-                .types
-                .insert(type_definition.name.clone(), type_definition);
+    for definition in parser::parse_schema(include_str!("builtin.graphql"))
+        .unwrap()
+        .definitions
+        .into_iter()
+    {
+        match definition {
+            TypeSystemDefinition::Type(type_definition) => {
+                let mut type_definition = convert_type_definition(type_definition.node);
+                type_definition.is_introspection = true;
+                composed_schema
+                    .types
+                    .insert(type_definition.name.clone(), type_definition);
+            }
+            TypeSystemDefinition::Directive(directive_definition) => {
+                composed_schema.directives.insert(
+                    directive_definition.node.name.node.clone(),
+                    convert_directive_definition(directive_definition.node),
+                );
+            }
+            TypeSystemDefinition::Schema(_) => {}
         }
     }
 
@@ -661,6 +742,4 @@ fn finish_schema(composed_schema: &mut ComposedSchema) {
             ty.possible_types = types;
         }
     }
-
-    add_builtin_scalars(composed_schema);
 }
