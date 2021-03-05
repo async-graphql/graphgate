@@ -1,0 +1,23 @@
+name: Release
+on:
+  push:
+    branches:
+      - release
+    paths:
+      - '**/Cargo.toml'
+      - '.github/workflows/release.yml'
+
+jobs:
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get version
+        run: echo PACKAGE_VERSION=$(sed -nE 's/^\s*version = "(.*?)"/\1/p' Cargo.toml) >> $GITHUB_ENV
+      - name: Build and push
+        id: docker_build
+        uses: docker/build-push-action@v2
+        with:
+          push: true
+          tags: scott829/graphgate:${{ $PACKAGE_VERSION }}
+          secrets: |
+            GIT_AUTH_TOKEN=${{ secrets.DOCKER_TOKEN }}
