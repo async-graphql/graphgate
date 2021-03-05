@@ -442,7 +442,7 @@ dependencies = [
 
 [[package]]
 name = "graphgate"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "async-graphql-parser",
@@ -462,7 +462,7 @@ dependencies = [
 
 [[package]]
 name = "graphgate-core"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "async-graphql-parser",
  "async-graphql-value",
@@ -478,7 +478,7 @@ dependencies = [
 
 [[package]]
 name = "graphgate-transports"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "async-graphql-value",
