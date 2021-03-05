@@ -1,7 +1,3 @@
-mod coordinator;
-mod introspection;
-mod response;
-
 use std::collections::BTreeMap;
 
 use futures_util::future::BoxFuture;
@@ -10,13 +6,15 @@ use tracing::instrument;
 use value::{ConstValue, Name, Variables};
 
 pub use coordinator::Coordinator;
-pub use response::{ErrorPath, Response, ServerError};
+use introspection::{IntrospectionRoot, Resolver};
 
 use crate::planner::{
     FetchNode, FlattenNode, IntrospectionNode, ParallelNode, PathSegment, PlanNode, SequenceNode,
 };
-use crate::ComposedSchema;
-use introspection::{IntrospectionRoot, Resolver};
+use crate::{ComposedSchema, Request, Response, ServerError};
+
+mod coordinator;
+mod introspection;
 
 pub struct Executor<'e, T> {
     schema: &'e ComposedSchema,
@@ -84,7 +82,7 @@ impl<'e, T: Coordinator> Executor<'e, T> {
     async fn execute_fetch_node(&self, fetch: &FetchNode<'_>) {
         let res = self
             .coordinator
-            .query(fetch.service, &fetch.query, Default::default())
+            .query(fetch.service, Request::new(&fetch.query))
             .await;
         let mut current_resp = self.resp.lock();
 
@@ -252,7 +250,10 @@ impl<'e, T: Coordinator> Executor<'e, T> {
 
         let res = self
             .coordinator
-            .query(flatten.service, &flatten.query, representations)
+            .query(
+                flatten.service,
+                Request::new(&flatten.query).variables(representations),
+            )
             .await;
         let current_resp = &mut self.resp.lock();
 

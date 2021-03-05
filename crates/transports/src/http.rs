@@ -1,7 +1,6 @@
 use futures_util::future::TryFutureExt;
-use graphgate_core::Response;
+use graphgate_core::{Request, Response};
 use reqwest::Error;
-use value::{value, Variables};
 
 use crate::transport::Transport;
 
@@ -23,10 +22,14 @@ impl HttpTransport {
 impl Transport for HttpTransport {
     type Error = Error;
 
-    async fn query(&self, query: &str, variables: Variables) -> Result<Response, Self::Error> {
+    async fn is_ready(&self) -> bool {
+        true
+    }
+
+    async fn query(&self, request: Request) -> Result<Response, Self::Error> {
         self.client
             .post(&self.url)
-            .json(&value!({ "query": query, "variables": variables }))
+            .json(&request)
             .send()
             .and_then(|resp| resp.json::<Response>())
             .await

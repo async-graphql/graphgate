@@ -5,28 +5,19 @@ use std::sync::Arc;
 
 use anyhow::{Context, Error, Result};
 use clap::{crate_version, App, Arg};
-use graphgate_core::{ComposedSchema, Coordinator, Executor, PlanBuilder};
+use graphgate_core::{ComposedSchema, Coordinator, Executor, PlanBuilder, Request};
 use graphgate_transports::CoordinatorImpl;
 use serde::Deserialize;
 use tokio::sync::Mutex;
 use tokio::time::Duration;
 use tracing_subscriber::prelude::*;
 use tracing_subscriber::{fmt, EnvFilter};
-use value::Variables;
 use warp::http::{Response as HttpResponse, StatusCode};
 use warp::Filter;
 
 use config::{Config, ServiceConfig};
 
 type SharedComposedSchema = Arc<Mutex<Option<Arc<ComposedSchema>>>>;
-
-#[derive(Debug, Deserialize)]
-struct Request {
-    query: String,
-    operation: Option<String>,
-    #[serde(default)]
-    variables: Variables,
-}
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -46,14 +37,15 @@ async fn main() -> Result<()> {
         .get_matches();
     let config_file = matches.value_of("config").unwrap();
     let config: Config = toml::from_str(
-        &std::fs::read_to_string(config_file).context("Failed to load config file.")?,
+        &std::fs::read_to_string(config_file)
+            .with_context(|| format!("Failed to load config file '{}'", config_file))?,
     )
-    .context("Failed to parse config file.")?;
+    .with_context(|| format!("Failed to parse config file '{}'", config_file))?;
 
     let coordinator = Arc::new(
         config
             .create_coordinator()
-            .context("Failed to create coordinator.")?,
+            .context("Failed to create coordinator")?,
     );
     let shared_composed_schema: SharedComposedSchema = Default::default();
     start_update_schema_loop(
@@ -112,13 +104,13 @@ async fn update_schema(
 
     let resp = futures_util::future::try_join_all(services.iter().map(|service| async move {
         let resp = coordinator
-            .query(&service.name, QUERY_SDL, Default::default())
+            .query(&service.name, Request::new(QUERY_SDL))
             .await
-            .context(format!("Failed to fetch SDL from '{}'.", service.name))?;
+            .with_context(|| format!("Failed to fetch SDL from '{}'.", service.name))?;
         let resp: ResponseQuery =
             value::from_value(resp.data).context("Failed to parse response.")?;
         let document = parser::parse_schema(resp.service.sdl)
-            .context(format!("Invalid SDL from '{}'.", service.name))?;
+            .with_context(|| format!("Invalid SDL from '{}'.", service.name))?;
         Ok::<_, Error>((service.name.clone(), document))
     }))
     .await?;
@@ -134,7 +126,7 @@ async fn serve(
     let bind_addr: SocketAddr = config
         .bind
         .parse()
-        .context(format!("Failed to parse bind addr '{}'.", config.bind))?;
+        .with_context(|| format!("Failed to parse bind addr '{}'.", config.bind))?;
 
     let graphql = warp::path::end()
         .and(warp::post())

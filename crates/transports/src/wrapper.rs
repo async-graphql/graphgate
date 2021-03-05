@@ -1,6 +1,5 @@
 use anyhow::Error;
-use graphgate_core::Response;
-use value::Variables;
+use graphgate_core::{Request, Response};
 
 use crate::transport::Transport;
 
@@ -10,9 +9,13 @@ pub struct TransportWrapper<T>(pub T);
 impl<T: Transport> Transport for TransportWrapper<T> {
     type Error = Error;
 
-    async fn query(&self, query: &str, variables: Variables) -> Result<Response, Self::Error> {
+    async fn is_ready(&self) -> bool {
+        self.0.is_ready().await
+    }
+
+    async fn query(&self, request: Request) -> Result<Response, Self::Error> {
         self.0
-            .query(query, variables)
+            .query(request)
             .await
             .map_err(|err| anyhow::anyhow!("{}", err))
     }
