@@ -18,6 +18,7 @@ use super::types::{
     FetchEntity, FetchEntityGroup, FetchEntityKey, FieldRef, RequiredRef, RootGroup, SelectionRef,
     SelectionRefSet,
 };
+use crate::planner::types::{MutationRootGroup, QueryRootGroup};
 use crate::schema::{ComposedSchema, KeyFields, MetaField, MetaType, TypeKind};
 use crate::validation::check_rules;
 use crate::{Response, ServerError};
@@ -78,6 +79,7 @@ impl<'a> PlanBuilder<'a> {
             variables: &self.variables,
             key_id: 1,
         };
+        let is_mutation = operation_definition.node.ty == OperationType::Mutation;
 
         let root_type = match operation_definition.node.ty {
             OperationType::Query => ctx.schema.query_type(),
@@ -91,8 +93,19 @@ impl<'a> PlanBuilder<'a> {
         };
 
         if let Some(root_type) = ctx.schema.types.get(root_type) {
-            Ok(ctx
-                .build_root_selection_set(root_type, &operation_definition.node.selection_set.node))
+            if !is_mutation {
+                Ok(ctx.build_root_selection_set(
+                    QueryRootGroup::default(),
+                    root_type,
+                    &operation_definition.node.selection_set.node,
+                ))
+            } else {
+                Ok(ctx.build_root_selection_set(
+                    MutationRootGroup::default(),
+                    root_type,
+                    &operation_definition.node.selection_set.node,
+                ))
+            }
         } else {
             unreachable!("The query validator should find this error.")
         }
@@ -102,12 +115,13 @@ impl<'a> PlanBuilder<'a> {
 impl<'a> Context<'a> {
     fn build_root_selection_set(
         &mut self,
+        mut root_group: impl RootGroup<'a>,
         parent_type: &'a MetaType,
         selection_set: &'a SelectionSet,
     ) -> PlanNode<'a> {
         fn build_root_selection_set_rec<'a>(
             ctx: &mut Context<'a>,
-            root_group: &mut RootGroup<'a>,
+            root_group: &mut impl RootGroup<'a>,
             fetch_entity_group: &mut FetchEntityGroup<'a>,
             inspection_selection_set: &mut IntrospectionSelectionSet,
             parent_type: &'a MetaType,
@@ -132,7 +146,7 @@ impl<'a> Context<'a> {
                         }
 
                         if let Some(service) = &field_definition.service {
-                            let selection_ref_set = root_group.entry(service).or_default();
+                            let selection_ref_set = root_group.selection_set_mut(service);
                             let mut path = ResponsePath::default();
                             ctx.build_field(
                                 &mut path,
@@ -173,7 +187,6 @@ impl<'a> Context<'a> {
             }
         }
 
-        let mut root_group = RootGroup::default();
         let mut fetch_entity_group = FetchEntityGroup::default();
         let mut inspection_selection_set = IntrospectionSelectionSet::default();
         build_root_selection_set_rec(
@@ -194,7 +207,7 @@ impl<'a> Context<'a> {
 
         let fetch_node = {
             let mut nodes = Vec::new();
-            for (service, selection_set) in root_group {
+            for (service, selection_set) in root_group.into_selection_set() {
                 nodes.push(PlanNode::Fetch(FetchNode {
                     service,
                     query: selection_set.to_query(self.variables),

@@ -33,7 +33,7 @@ impl<'a> VariableInAllowedPosition<'a> {
             return;
         }
 
-        visited.insert(from.clone());
+        visited.insert(*from);
 
         if let Some(usages) = self.variable_usages.get(from) {
             for (var_name, usage_pos, var_type) in usages {

@@ -29,7 +29,7 @@ impl<'a> NoUndefinedVariables<'a> {
             return;
         }
 
-        visited.insert(scope.clone());
+        visited.insert(*scope);
 
         if let Some(used_vars) = self.used_variables.get(scope) {
             for (var, pos) in used_vars {
@@ -116,7 +116,7 @@ impl<'a> Visitor<'a> for NoUndefinedVariables<'a> {
     ) {
         if let Some(ref scope) = self.current_scope {
             self.used_variables
-                .entry(scope.clone())
+                .entry(*scope)
                 .or_insert_with(HashMap::new)
                 .extend(
                     referenced_variables(&value.node)
@@ -133,7 +133,7 @@ impl<'a> Visitor<'a> for NoUndefinedVariables<'a> {
     ) {
         if let Some(ref scope) = self.current_scope {
             self.spreads
-                .entry(scope.clone())
+                .entry(*scope)
                 .or_insert_with(Vec::new)
                 .push(&fragment_spread.node.fragment_name.node);
         }

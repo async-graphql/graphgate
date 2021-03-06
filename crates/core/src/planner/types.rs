@@ -174,7 +174,47 @@ fn stringify_selection_ref_set_rec(
     write!(w, "}}")
 }
 
-pub type RootGroup<'a> = IndexMap<&'a str, SelectionRefSet<'a>>;
+pub trait RootGroup<'a> {
+    fn selection_set_mut(&mut self, service: &'a str) -> &mut SelectionRefSet<'a>;
+
+    fn into_selection_set(self) -> Vec<(&'a str, SelectionRefSet<'a>)>;
+}
+
+#[derive(Default)]
+pub struct QueryRootGroup<'a>(IndexMap<&'a str, SelectionRefSet<'a>>);
+
+impl<'a> RootGroup<'a> for QueryRootGroup<'a> {
+    fn selection_set_mut(&mut self, service: &'a str) -> &mut SelectionRefSet<'a> {
+        self.0.entry(service).or_default()
+    }
+
+    fn into_selection_set(self) -> Vec<(&'a str, SelectionRefSet<'a>)> {
+        self.0.into_iter().collect()
+    }
+}
+
+#[derive(Default)]
+pub struct MutationRootGroup<'a>(Vec<(&'a str, SelectionRefSet<'a>)>);
+
+impl<'a> RootGroup<'a> for MutationRootGroup<'a> {
+    fn selection_set_mut(&mut self, service: &'a str) -> &mut SelectionRefSet<'a> {
+        if self
+            .0
+            .last()
+            .filter(|(last_service, _)| *last_service == service)
+            .is_some()
+        {
+            return &mut self.0.last_mut().unwrap().1;
+        }
+        self.0.push((service, Default::default()));
+        let last = self.0.last_mut().unwrap();
+        &mut last.1
+    }
+
+    fn into_selection_set(self) -> Vec<(&'a str, SelectionRefSet<'a>)> {
+        self.0
+    }
+}
 
 pub struct FetchEntity<'a> {
     pub parent_type: &'a MetaType,
