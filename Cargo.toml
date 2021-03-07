@@ -3,6 +3,7 @@ name = "graphgate"
 version = "0.2.0"
 authors = ["Sunli <scott_s829@163.com>"]
 edition = "2018"
+default-run = "graphgate"
 
 [dependencies]
 graphgate-core = { version = "0.2.0", path = "./crates/core" }
@@ -14,12 +15,28 @@ tokio = { version = "1.2.0", features = ["rt-multi-thread", "time", "macros", "s
 warp = "0.3.0"
 toml = "0.5.8"
 serde = { version = "1.0.123", features = ["derive"] }
-clap = "2.33.3"
 anyhow = "1.0.38"
 futures-util = "0.3.13"
 tracing = "0.1.25"
 tracing-subscriber = "0.2.16"
 serde_json = "1.0.64"
+structopt = "0.3.21"
+kube = { version = "0.51.0", features = ["derive"] }
+k8s-openapi = { version = "0.11.0", features = ["v1_19"], default-features=false }
+schemars = { version = "0.8.0", features = ["chrono"] }
+chrono = { version = "0.4.19", features = ["serde"] }
+serde_yaml = "0.8.17"
+thiserror = "1.0.24"
+
+[[bin]]
+doc = false
+name = "graphgate"
+path = "src/main.rs"
+
+[[bin]]
+doc = false
+name = "crdgen"
+path = "src/crdgen.rs"
 
 [workspace]
 members = [

@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use anyhow::{Context as _, Error, Result};
 use futures_util::future::Either;
-use futures_util::stream::pending;
+use futures_util::stream;
 use futures_util::{SinkExt, StreamExt};
 use graphgate_core::{Request, Response};
 use http::Request as HttpRequest;
@@ -138,7 +138,7 @@ fn spawn_connect(
 }
 
 async fn main_loop(mut rx: mpsc::UnboundedReceiver<Command>, url: String) {
-    let mut stream = Either::Right(pending());
+    let mut stream = Either::Right(stream::pending());
     let mut sink = None;
     let mut protocol = Protocols::SubscriptionsTransportWS;
     let (tx_connect, mut rx_connect) = mpsc::unbounded_channel();
@@ -187,7 +187,7 @@ async fn main_loop(mut rx: mpsc::UnboundedReceiver<Command>, url: String) {
                             sender.send(Err(err.clone())).ok();
                         });
                         sink = None;
-                        stream = Either::Right(pending());
+                        stream = Either::Right(stream::pending());
                         spawn_connect(url.clone(), Some(Duration::from_secs(RECONNECT_DELAY_SECONDS)), tx_connect.clone());
                     }
                     None => {
@@ -197,7 +197,7 @@ async fn main_loop(mut rx: mpsc::UnboundedReceiver<Command>, url: String) {
                             sender.send(Err(err.clone())).ok();
                         });
                         sink = None;
-                        stream = Either::Right(pending());
+                        stream = Either::Right(stream::pending());
                         spawn_connect(url.clone(), Some(Duration::from_secs(RECONNECT_DELAY_SECONDS)), tx_connect.clone());
                     }
                 }

@@ -1,61 +1,24 @@
 mod config;
+mod http;
+mod k8s;
+mod options;
+mod shared_coordinator;
 
 use std::net::SocketAddr;
-use std::sync::Arc;
 
-use anyhow::{Context, Error, Result};
-use clap::{crate_version, App, Arg};
-use graphgate_core::{ComposedSchema, Coordinator, Executor, PlanBuilder, Request};
-use graphgate_transports::CoordinatorImpl;
-use serde::Deserialize;
-use tokio::sync::Mutex;
+use anyhow::{Context, Result};
+use graphgate_core::ComposedSchema;
+use graphgate_transports::{CoordinatorImpl, RoundRobinTransport};
+use structopt::StructOpt;
 use tokio::time::Duration;
 use tracing_subscriber::prelude::*;
 use tracing_subscriber::{fmt, EnvFilter};
-use warp::http::{Response as HttpResponse, StatusCode};
 use warp::Filter;
 
-use config::{Config, ServiceConfig};
-
-type SharedComposedSchema = Arc<Mutex<Option<Arc<ComposedSchema>>>>;
-
-#[tokio::main]
-async fn main() -> Result<()> {
-    init_tracing();
-
-    let matches = App::new("GraphQL Gate")
-        .version(crate_version!())
-        .arg(
-            Arg::with_name("config")
-                .short("c")
-                .long("config")
-                .value_name("FILE")
-                .default_value("config.toml")
-                .help("Sets a custom config file")
-                .takes_value(true),
-        )
-        .get_matches();
-    let config_file = matches.value_of("config").unwrap();
-    let config: Config = toml::from_str(
-        &std::fs::read_to_string(config_file)
-            .with_context(|| format!("Failed to load config file '{}'", config_file))?,
-    )
-    .with_context(|| format!("Failed to parse config file '{}'", config_file))?;
-
-    let coordinator = Arc::new(
-        config
-            .create_coordinator()
-            .context("Failed to create coordinator")?,
-    );
-    let shared_composed_schema: SharedComposedSchema = Default::default();
-    start_update_schema_loop(
-        shared_composed_schema.clone(),
-        coordinator.clone(),
-        config.services.clone(),
-    );
-    serve(config, shared_composed_schema.clone(), coordinator.clone()).await?;
-    Ok(())
-}
+use config::Config;
+use http::graphql_filter;
+use options::Options;
+use shared_coordinator::SharedCoordinator;
 
 fn init_tracing() {
     tracing_subscriber::registry()
@@ -68,126 +31,110 @@ fn init_tracing() {
         .init();
 }
 
-fn start_update_schema_loop(
-    shared_composed_schema: SharedComposedSchema,
-    coordinator: Arc<CoordinatorImpl>,
-    services: Vec<ServiceConfig>,
-) {
-    tokio::spawn(async move {
-        loop {
-            tracing::debug!("Update schema.");
-            match update_schema(&coordinator, &services).await {
-                Ok(schema) => *shared_composed_schema.lock().await = Some(Arc::new(schema)),
-                Err(err) => tracing::error!(error = %err, "Failed to update schema"),
-            }
-            tokio::time::sleep(Duration::from_secs(30)).await;
-        }
-    });
-}
+async fn start_with_config_file(config_file: String) -> Result<()> {
+    let config: Config = toml::from_str(
+        &std::fs::read_to_string(&config_file)
+            .with_context(|| format!("Failed to load config file '{}'", config_file))?,
+    )
+    .with_context(|| format!("Failed to parse config file '{}'", config_file))?;
 
-async fn update_schema(
-    coordinator: &impl Coordinator<Error = Error>,
-    services: &[ServiceConfig],
-) -> Result<ComposedSchema> {
-    const QUERY_SDL: &str = "{ _service { sdl }}";
-
-    #[derive(Deserialize)]
-    struct ResponseQuery {
-        #[serde(rename = "_service")]
-        service: ResponseService,
-    }
-
-    #[derive(Deserialize)]
-    struct ResponseService {
-        sdl: String,
-    }
-
-    let resp = futures_util::future::try_join_all(services.iter().map(|service| async move {
-        let resp = coordinator
-            .query(&service.name, Request::new(QUERY_SDL))
-            .await
-            .with_context(|| format!("Failed to fetch SDL from '{}'.", service.name))?;
-        let resp: ResponseQuery =
-            value::from_value(resp.data).context("Failed to parse response.")?;
-        let document = parser::parse_schema(resp.service.sdl)
-            .with_context(|| format!("Invalid SDL from '{}'.", service.name))?;
-        Ok::<_, Error>((service.name.clone(), document))
-    }))
-    .await?;
-
-    Ok(ComposedSchema::combine(resp).context("Unable to merge schema.")?)
-}
-
-async fn serve(
-    config: Config,
-    shared_composed_schema: SharedComposedSchema,
-    coordinator: Arc<CoordinatorImpl>,
-) -> Result<()> {
+    let coordinator = SharedCoordinator::with_coordinator(
+        config
+            .create_coordinator()
+            .context("Failed to create coordinator")?,
+    );
     let bind_addr: SocketAddr = config
         .bind
         .parse()
-        .with_context(|| format!("Failed to parse bind addr '{}'.", config.bind))?;
+        .context(format!("Failed to parse bind addr '{}'", config.bind))?;
+    warp::serve(graphql_filter(coordinator))
+        .bind(bind_addr)
+        .await;
+    Ok(())
+}
 
-    let graphql = warp::path::end()
-        .and(warp::post())
-        .and(warp::body::json())
-        .and_then({
-            let shared_composed_schema = shared_composed_schema.clone();
-            let coordinator = coordinator.clone();
-            move |request: Request| {
-                let shared_composed_schema = shared_composed_schema.clone();
-                let coordinator = coordinator.clone();
-                async move {
-                    let composed_schema = {
-                        let shared_composed_schema = shared_composed_schema.lock().await;
-                        match &*shared_composed_schema {
-                            Some(composed_schema) => composed_schema.clone(),
-                            None => {
-                                return Ok(HttpResponse::builder()
-                                    .status(StatusCode::SERVICE_UNAVAILABLE)
-                                    .body("Gateway is not ready.".to_string()));
+async fn start_with_schema_file(schema_file: String, bind: String) -> Result<()> {
+    let schema: ComposedSchema = ComposedSchema::parse(
+        &std::fs::read_to_string(&schema_file)
+            .with_context(|| format!("Failed to load schema file '{}'", schema_file))?,
+    )
+    .with_context(|| format!("Failed to parse config file '{}'", schema_file))?;
+
+    let mut coordinator = CoordinatorImpl::default();
+    for (service, urls) in &schema.services {
+        let mut transport = RoundRobinTransport::default();
+        for url in urls {
+            transport = transport
+                .add_url(url)
+                .context(format!("Invalid service url '{}'", url))?;
+        }
+        coordinator = coordinator.add(service, transport);
+    }
+
+    let bind_addr: SocketAddr = bind
+        .parse()
+        .context(format!("Failed to parse bind addr '{}'", bind))?;
+
+    warp::serve(graphql_filter(SharedCoordinator::with_coordinator(
+        coordinator,
+    )))
+    .bind(bind_addr)
+    .await;
+    Ok(())
+}
+
+async fn start_in_k8s(bind: String) -> Result<()> {
+    let shared_coordinator = SharedCoordinator::default();
+    tokio::spawn({
+        let shared_coordinator = shared_coordinator.clone();
+        async move {
+            let mut prev_services = None;
+
+            loop {
+                match k8s::find_graphql_services().await {
+                    Ok(services) => {
+                        if Some(&services) != prev_services.as_ref() {
+                            match k8s::create_coordinator(&services) {
+                                Ok(coordinator) => {
+                                    shared_coordinator.set_coordinator(coordinator);
+                                    prev_services = Some(services);
+                                }
+                                Err(err) => {
+                                    tracing::error!(error = %err, "Failed to create coordinator.");
+                                }
                             }
                         }
-                    };
-                    let document = match parser::parse_query(request.query) {
-                        Ok(document) => document,
-                        Err(err) => {
-                            return Ok(HttpResponse::builder()
-                                .status(StatusCode::BAD_REQUEST)
-                                .body(err.to_string()));
-                        }
-                    };
-                    let mut plan_builder =
-                        PlanBuilder::new(&composed_schema, document).variables(request.variables);
-                    if let Some(operation) = request.operation {
-                        plan_builder = plan_builder.operation_name(operation);
                     }
-                    let plan = match plan_builder.plan() {
-                        Ok(plan) => plan,
-                        Err(response) => {
-                            return Ok(HttpResponse::builder()
-                                .status(StatusCode::OK)
-                                .body(serde_json::to_string(&response).unwrap()))
-                        }
-                    };
-                    let executor = Executor::new(&composed_schema, coordinator);
-                    Ok::<_, std::convert::Infallible>(
-                        HttpResponse::builder()
-                            .status(StatusCode::OK)
-                            .body(serde_json::to_string(&executor.execute(&plan).await).unwrap()),
-                    )
+                    Err(err) => {
+                        tracing::error!(error = %err, "Failed to find graphql services.");
+                    }
                 }
-            }
-        });
 
-    let graphql_playground = warp::path::end().and(warp::get()).map(|| {
-        HttpResponse::builder()
-            .header("content-type", "text/html")
-            .body(include_str!("playground.html"))
+                tokio::time::sleep(Duration::from_secs(30)).await;
+            }
+        }
     });
 
-    tracing::info!(addr = %bind_addr, "Listen");
-    let routes = graphql.or(graphql_playground);
-    warp::serve(routes).run(bind_addr).await;
+    let bind_addr: SocketAddr = bind
+        .parse()
+        .context(format!("Failed to parse bind addr '{}'", bind))?;
+
+    let graphql = warp::path::end().and(http::graphql_filter(shared_coordinator));
+    let health = warp::path!("health").map(|| warp::reply::json(&"healthy"));
+    let routes = graphql.or(health);
+    warp::serve(routes).bind(bind_addr).await;
     Ok(())
+}
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    init_tracing();
+
+    let options: Options = Options::from_args();
+
+    match options {
+        Options::Serve { config } => start_with_config_file(config).await,
+        Options::Schema { schema, bind } => start_with_schema_file(schema, bind).await,
+        Options::Controller { bind } => start_in_k8s(bind).await,
+    }
 }

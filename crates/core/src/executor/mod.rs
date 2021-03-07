@@ -19,11 +19,11 @@ mod introspection;
 pub struct Executor<'e, T> {
     schema: &'e ComposedSchema,
     resp: Mutex<Response>,
-    coordinator: T,
+    coordinator: &'e T,
 }
 
 impl<'e, T: Coordinator> Executor<'e, T> {
-    pub fn new(schema: &'e ComposedSchema, coordinator: T) -> Self {
+    pub fn new(schema: &'e ComposedSchema, coordinator: &'e T) -> Self {
         Executor {
             schema,
             resp: Mutex::new(Response {

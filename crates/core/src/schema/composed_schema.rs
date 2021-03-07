@@ -172,7 +172,7 @@ pub struct ComposedSchema {
     pub(crate) subscription_type: Option<Name>,
     pub(crate) types: HashMap<Name, MetaType>,
     pub(crate) directives: HashMap<Name, MetaDirective>,
-    pub(crate) services: IndexMap<String, Vec<String>>,
+    pub services: IndexMap<String, Vec<String>>,
 }
 
 impl ComposedSchema {
