@@ -47,6 +47,8 @@ async fn start_with_config_file(config_file: String) -> Result<()> {
         .bind
         .parse()
         .context(format!("Failed to parse bind addr '{}'", config.bind))?;
+
+    tracing::info!(addr = %bind_addr, "Listening");
     warp::serve(graphql_filter(coordinator))
         .bind(bind_addr)
         .await;
@@ -58,7 +60,7 @@ async fn start_with_schema_file(schema_file: String, bind: String) -> Result<()>
         &std::fs::read_to_string(&schema_file)
             .with_context(|| format!("Failed to load schema file '{}'", schema_file))?,
     )
-    .with_context(|| format!("Failed to parse config file '{}'", schema_file))?;
+    .with_context(|| format!("Failed to parse schema file '{}'", schema_file))?;
 
     let mut coordinator = CoordinatorImpl::default();
     for (service, urls) in &schema.services {
@@ -75,6 +77,7 @@ async fn start_with_schema_file(schema_file: String, bind: String) -> Result<()>
         .parse()
         .context(format!("Failed to parse bind addr '{}'", bind))?;
 
+    tracing::info!(addr = %bind_addr, "Listening");
     warp::serve(graphql_filter(SharedCoordinator::with_coordinator(
         coordinator,
     )))
@@ -97,6 +100,7 @@ async fn start_in_k8s(bind: String) -> Result<()> {
                             match k8s::create_coordinator(&services) {
                                 Ok(coordinator) => {
                                     shared_coordinator.set_coordinator(coordinator);
+                                    tracing::info!(services = ?services, "Coordinator updated.");
                                     prev_services = Some(services);
                                 }
                                 Err(err) => {
@@ -122,6 +126,8 @@ async fn start_in_k8s(bind: String) -> Result<()> {
     let graphql = warp::path::end().and(http::graphql_filter(shared_coordinator));
     let health = warp::path!("health").map(|| warp::reply::json(&"healthy"));
     let routes = graphql.or(health);
+
+    tracing::info!(addr = %bind_addr, "Listening");
     warp::serve(routes).bind(bind_addr).await;
     Ok(())
 }
@@ -135,6 +141,6 @@ async fn main() -> Result<()> {
     match options {
         Options::Serve { config } => start_with_config_file(config).await,
         Options::Schema { schema, bind } => start_with_schema_file(schema, bind).await,
-        Options::Controller { bind } => start_in_k8s(bind).await,
+        Options::K8s { bind } => start_in_k8s(bind).await,
     }
 }

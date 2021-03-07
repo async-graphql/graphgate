@@ -100,7 +100,7 @@ impl<'a> Visitor<'a> for VariableInAllowedPosition<'a> {
     ) {
         if let Some(ref scope) = self.current_scope {
             self.variable_defs
-                .entry(scope.clone())
+                .entry(*scope)
                 .or_insert_with(Vec::new)
                 .push(variable_definition);
         }
@@ -113,7 +113,7 @@ impl<'a> Visitor<'a> for VariableInAllowedPosition<'a> {
     ) {
         if let Some(ref scope) = self.current_scope {
             self.spreads
-                .entry(scope.clone())
+                .entry(*scope)
                 .or_insert_with(HashSet::new)
                 .insert(&fragment_spread.node.fragment_name.node);
         }
@@ -130,7 +130,7 @@ impl<'a> Visitor<'a> for VariableInAllowedPosition<'a> {
             if let Some(expected_type) = expected_type {
                 if let Some(scope) = &self.current_scope {
                     self.variable_usages
-                        .entry(scope.clone())
+                        .entry(*scope)
                         .or_insert_with(Vec::new)
                         .push((name, pos, *expected_type));
                 }

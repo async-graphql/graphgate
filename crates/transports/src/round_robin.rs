@@ -11,7 +11,7 @@ pub struct RoundRobinTransport {
 }
 
 impl RoundRobinTransport {
-    pub fn add<T>(mut self, transport: impl Transport) -> Self {
+    pub fn add_transport<T>(mut self, transport: impl Transport) -> Self {
         self.transports.push(Box::new(TransportWrapper(transport)));
         self
     }

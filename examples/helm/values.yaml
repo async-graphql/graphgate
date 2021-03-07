@@ -1,0 +1,8 @@
+port: 8000
+
+replicas: 3
+
+services:
+  - accounts
+  - products
+  - reviews

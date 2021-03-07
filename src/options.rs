@@ -18,8 +18,8 @@ pub enum Options {
         bind: String,
     },
 
-    /// Start gateway as kubernetes controller
-    Controller {
+    /// Start gateway in kubernetes
+    K8s {
         /// Bind address
         #[structopt(long)]
         bind: String,

@@ -201,11 +201,11 @@ pub fn is_valid_input_value(
     }
 
     if !ty.nullable {
-        return if matches!(value, ConstValue::Null) {
+        if matches!(value, ConstValue::Null) {
             Some(valid_error(&path_node, format!("expected type \"{}\"", ty)))
         } else {
             is_valid_input_base_value(schema, &ty.base, value, path_node)
-        };
+        }
     } else {
         is_valid_input_base_value(schema, &ty.base, value, path_node)
     }

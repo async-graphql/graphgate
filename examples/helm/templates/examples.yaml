@@ -1,0 +1,41 @@
+{{- range .Values.services }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ . }}
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: {{ . }}
+  strategy:
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        app: {{ . }}
+    spec:
+      containers:
+        - image: scott829/graphgate-example-{{ . }}:latest
+          imagePullPolicy: Always
+          name: {{ . }}
+          ports:
+            - containerPort: 8000
+              name: http
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ . }}
+  labels:
+    graphgate.org/service: {{ . }}
+    graphgate.org/protocol: http
+spec:
+  ports:
+    - name: http
+      port: 8000
+      targetPort: 8000
+  selector:
+    app: {{ . }}
+{{- end }}

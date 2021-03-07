@@ -4,9 +4,6 @@ on:
   push:
     branches:
       - release
-    paths:
-      - '**/Cargo.toml'
-      - '.github/workflows/release.yml'
 
 jobs:
   docker:
@@ -23,14 +20,37 @@ jobs:
           username: ${{ secrets.DOCKER_USER }}
           password: ${{ secrets.DOCKER_TOKEN }}
       - name: Build and push
-        id: docker_build
         uses: docker/build-push-action@v2
         with:
           push: true
+          context: .
           tags: |
             scott829/graphgate:${{ env.PACKAGE_VERSION }}
             scott829/graphgate:latest
       -
         name: Image digest
         run: echo ${{ steps.docker_build.outputs.digest }}
-        
+
+  examples-docker:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        package:
+          - name: accounts
+          - name: products
+          - name: reviews
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+      -
+        name: Login to DockerHub
+        uses: docker/login-action@v1
+        with:
+          username: ${{ secrets.DOCKER_USER }}
+          password: ${{ secrets.DOCKER_TOKEN }}
+      - name: Build and push ${{ matrix.package.name }}
+        uses: docker/build-push-action@v2
+        with:
+          push: true
+          context: ./examples/${{ matrix.package.name }}
+          tags: scott829/graphgate-example-${{ matrix.package.name }}:latest

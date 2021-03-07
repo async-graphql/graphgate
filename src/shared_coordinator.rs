@@ -35,7 +35,7 @@ impl Default for SharedCoordinator {
         };
         tokio::spawn({
             let coordinator = coordinator.clone();
-            async move { coordinator.update_loop(rx) }
+            async move { coordinator.update_loop(rx).await }
         });
         coordinator
     }

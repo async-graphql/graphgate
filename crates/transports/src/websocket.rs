@@ -56,7 +56,7 @@ impl Transport for WebSocketTransport {
 
     async fn query(&self, request: Request) -> Result<Response, Self::Error> {
         let (tx, rx) = oneshot::channel();
-        if !self.tx.send(Command::Query { request, reply: tx }).is_ok() {
+        if self.tx.send(Command::Query { request, reply: tx }).is_err() {
             return Err(Arc::new(anyhow::anyhow!("Not ready.")));
         }
         rx.await
@@ -168,14 +168,9 @@ async fn main_loop(mut rx: mpsc::UnboundedReceiver<Command>, url: String) {
             message = stream.next() => {
                 match message {
                     Some(Ok(Message::Text(text))) => {
-                        if let Ok(message) = serde_json::from_str::<ServerMessage>(&text) {
-                            match message {
-                                ServerMessage::Data { id, payload } => {
-                                    if let Some(sender) = pending_requests.remove(id) {
-                                        sender.send(Ok(payload)).ok();
-                                    }
-                                }
-                                _ => {}
+                        if let Ok(ServerMessage::Data { id, payload }) = serde_json::from_str::<ServerMessage>(&text) {
+                            if let Some(sender) = pending_requests.remove(id) {
+                                sender.send(Ok(payload)).ok();
                             }
                         }
                     }

@@ -9,7 +9,6 @@ pub fn graphql_filter(
     shared_coordinator: SharedCoordinator,
 ) -> impl Filter<Extract = (impl Reply,), Error = Rejection> + Clone {
     let graphql = warp::post().and(warp::body::json()).and_then({
-        let shared_coordinator = shared_coordinator.clone();
         move |request: Request| {
             let shared_coordinator = shared_coordinator.clone();
             async move { Ok::<_, Infallible>(shared_coordinator.query(request).await) }
