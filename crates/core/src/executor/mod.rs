@@ -1,17 +1,20 @@
 use std::collections::BTreeMap;
 
 use futures_util::future::BoxFuture;
+use futures_util::stream::BoxStream;
 use spin::Mutex;
 use tracing::instrument;
 use value::{ConstValue, Name, Variables};
 
-pub use coordinator::Coordinator;
-use introspection::{IntrospectionRoot, Resolver};
-
 use crate::planner::{
     FetchNode, FlattenNode, IntrospectionNode, ParallelNode, PathSegment, PlanNode, SequenceNode,
+    SubscribeNode,
 };
 use crate::{ComposedSchema, Request, Response, ServerError};
+
+pub use coordinator::Coordinator;
+use futures_util::StreamExt;
+use introspection::{IntrospectionRoot, Resolver};
 
 mod coordinator;
 mod introspection;
@@ -26,10 +29,7 @@ impl<'e, T: Coordinator> Executor<'e, T> {
     pub fn new(schema: &'e ComposedSchema, coordinator: &'e T) -> Self {
         Executor {
             schema,
-            resp: Mutex::new(Response {
-                data: ConstValue::Null,
-                errors: Vec::new(),
-            }),
+            resp: Mutex::new(Response::default()),
             coordinator,
         }
     }
@@ -37,6 +37,48 @@ impl<'e, T: Coordinator> Executor<'e, T> {
     pub async fn execute(self, node: &PlanNode<'_>) -> Response {
         self.execute_node(node).await;
         self.resp.into_inner()
+    }
+
+    pub async fn execute_stream<'a>(self, node: &'a SubscribeNode<'e>) -> BoxStream<'a, Response> {
+        match node {
+            SubscribeNode::Query(node) => Box::pin(async_stream::stream! {
+                yield self.execute(node).await
+            }),
+            SubscribeNode::Subscribe {
+                fetch_nodes,
+                query_nodes,
+            } => {
+                let mut stream =
+                    match futures_util::future::try_join_all(fetch_nodes.iter().map(|node| {
+                        self.coordinator
+                            .subscribe(node.service, Request::new(&node.query))
+                    }))
+                    .await
+                    {
+                        Ok(streams) => futures_util::stream::select_all(streams),
+                        Err(err) => {
+                            return futures_util::stream::once(async move {
+                                Response {
+                                    data: ConstValue::Null,
+                                    errors: vec![ServerError {
+                                        message: err.to_string(),
+                                        locations: Default::default(),
+                                    }],
+                                }
+                            })
+                            .boxed();
+                        }
+                    };
+
+                Box::pin(async_stream::stream! {
+                    while let Some(response) = stream.next().await {
+                        *self.resp.lock() = response;
+                        self.execute_node(query_nodes).await;
+                        yield std::mem::take(&mut *self.resp.lock());
+                    }
+                })
+            }
+        }
     }
 
     fn execute_node<'a>(&'a self, node: &'a PlanNode<'_>) -> BoxFuture<'a, ()> {
@@ -240,6 +282,9 @@ impl<'e, T: Coordinator> Executor<'e, T> {
                 &flatten.path,
                 flatten.prefix,
             );
+            if representations.is_empty() {
+                return;
+            }
             let mut variables = Variables::default();
             variables.insert(
                 Name::new("representations"),

@@ -121,3 +121,12 @@ pub struct FlattenNode<'a> {
     pub parent_type: &'a str,
     pub query: String,
 }
+
+#[derive(Debug)]
+pub enum SubscribeNode<'a> {
+    Subscribe {
+        fetch_nodes: Vec<FetchNode<'a>>,
+        query_nodes: PlanNode<'a>,
+    },
+    Query(PlanNode<'a>),
+}

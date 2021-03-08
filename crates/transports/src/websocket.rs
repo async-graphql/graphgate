@@ -1,9 +1,9 @@
 use std::collections::HashMap;
-use std::sync::Arc;
 
-use anyhow::{Context as _, Error, Result};
+use anyhow::{Context as _, Result};
 use futures_util::future::Either;
 use futures_util::stream;
+use futures_util::stream::BoxStream;
 use futures_util::{SinkExt, StreamExt};
 use graphgate_core::{Request, Response};
 use http::Request as HttpRequest;
@@ -16,17 +16,18 @@ use tokio_tungstenite::{MaybeTlsStream, WebSocketStream};
 
 use crate::transport::Transport;
 
-const RECONNECT_DELAY_SECONDS: u64 = 5;
+const RECONNECT_DELAY_SECONDS: u64 = 3;
 
 type WsStream = WebSocketStream<MaybeTlsStream<TcpStream>>;
 
 enum Command {
-    IsReady {
-        reply: oneshot::Sender<bool>,
-    },
     Query {
         request: Request,
-        reply: oneshot::Sender<Result<Response, Arc<Error>>>,
+        reply: oneshot::Sender<Result<Response>>,
+    },
+    Subscribe {
+        request: Request,
+        reply: oneshot::Sender<Result<BoxStream<'static, Response>>>,
     },
 }
 
@@ -44,23 +45,24 @@ impl WebSocketTransport {
 
 #[async_trait::async_trait]
 impl Transport for WebSocketTransport {
-    type Error = Arc<Error>;
-
-    async fn is_ready(&self) -> bool {
-        let (tx, rx) = oneshot::channel();
-        if self.tx.send(Command::IsReady { reply: tx }).is_err() {
-            return false;
-        }
-        rx.await.unwrap_or_default()
-    }
-
-    async fn query(&self, request: Request) -> Result<Response, Self::Error> {
+    async fn query(&self, request: Request) -> Result<Response> {
         let (tx, rx) = oneshot::channel();
         if self.tx.send(Command::Query { request, reply: tx }).is_err() {
-            return Err(Arc::new(anyhow::anyhow!("Not ready.")));
+            return Err(anyhow::anyhow!("Not ready."));
         }
-        rx.await
-            .map_err(|_| Arc::new(anyhow::anyhow!("Not ready.")))?
+        rx.await.map_err(|_| anyhow::anyhow!("Not ready."))?
+    }
+
+    async fn subscribe(&self, request: Request) -> Result<BoxStream<'static, Response>> {
+        let (tx, rx) = oneshot::channel();
+        if self
+            .tx
+            .send(Command::Subscribe { request, reply: tx })
+            .is_err()
+        {
+            return Err(anyhow::anyhow!("Not ready."));
+        }
+        rx.await.map_err(|_| anyhow::anyhow!("Not ready."))?
     }
 }
 
@@ -69,7 +71,7 @@ async fn do_connect(url: &str, delay: Option<Duration>) -> Result<(WsStream, Pro
         tokio::time::sleep(delay).await;
     }
 
-    tracing::error!(url = %url, "Connection to websocket.");
+    tracing::debug!(url = %url, "Connect to websocket.");
 
     const PROTOCOLS: &str = "graphql-ws, graphql-transport-ws";
     let req = HttpRequest::builder()
@@ -92,7 +94,7 @@ async fn do_connect(url: &str, delay: Option<Duration>) -> Result<(WsStream, Pro
         .flatten()
         .ok_or_else(|| anyhow::anyhow!("Unknown protocol: {}", url))?;
 
-    tracing::error!(url = %url, "Send connection_init.");
+    tracing::debug!(url = %url, "Send connection_init.");
     stream
         .send(Message::Text(
             serde_json::to_string(&ClientMessage::ConnectionInit { payload: None }).unwrap(),
@@ -111,7 +113,7 @@ async fn do_connect(url: &str, delay: Option<Duration>) -> Result<(WsStream, Pro
                 serde_json::from_str::<ServerMessage>(&text).with_context(|| "Invalid response")?;
             match message {
                 ServerMessage::ConnectionAck => {
-                    tracing::error!(url = %url, "Received connection_ack");
+                    tracing::debug!(url = %url, "Received connection_ack");
                     break;
                 }
                 ServerMessage::ConnectionError {
@@ -142,8 +144,8 @@ async fn main_loop(mut rx: mpsc::UnboundedReceiver<Command>, url: String) {
     let mut sink = None;
     let mut protocol = Protocols::SubscriptionsTransportWS;
     let (tx_connect, mut rx_connect) = mpsc::unbounded_channel();
-    let mut pending_requests: HashMap<String, oneshot::Sender<Result<Response, Arc<Error>>>> =
-        HashMap::new();
+    let mut pending_requests: HashMap<String, oneshot::Sender<Result<Response>>> = HashMap::new();
+    let mut subscribes: HashMap<String, mpsc::UnboundedSender<Response>> = HashMap::new();
     let mut req_id = 0usize;
 
     spawn_connect(url.clone(), None, tx_connect.clone());
@@ -168,18 +170,30 @@ async fn main_loop(mut rx: mpsc::UnboundedReceiver<Command>, url: String) {
             message = stream.next() => {
                 match message {
                     Some(Ok(Message::Text(text))) => {
-                        if let Ok(ServerMessage::Data { id, payload }) = serde_json::from_str::<ServerMessage>(&text) {
-                            if let Some(sender) = pending_requests.remove(id) {
-                                sender.send(Ok(payload)).ok();
+                        match serde_json::from_str::<ServerMessage>(&text) {
+                            Ok(ServerMessage::Data { id, payload }) => {
+                                if let Some(tx) = subscribes.get_mut(id) {
+                                    if tx.send(payload).is_err() {
+                                        if let Some(sink) = &mut sink {
+                                            let msg = Message::text(serde_json::to_string(&ClientMessage::Stop { id: id }).unwrap());
+                                            sink.send(msg).await.ok();
+                                        }
+                                    }
+                                } else if let Some(sender) = pending_requests.remove(id) {
+                                    sender.send(Ok(payload)).ok();
+                                }
                             }
+                            Ok(ServerMessage::Complete { id }) => {
+                                subscribes.remove(id);
+                            }
+                            _ => {}
                         }
                     }
                     Some(Ok(_)) => {}
                     Some(Err(err)) => {
                         tracing::error!(url = %url, error = %err, "Connection error.");
-                        let err = Arc::new(anyhow::anyhow!("{}", err));
                         pending_requests.drain().for_each(|(_, sender)| {
-                            sender.send(Err(err.clone())).ok();
+                            sender.send(Err(anyhow::anyhow!("{}", err))).ok();
                         });
                         sink = None;
                         stream = Either::Right(stream::pending());
@@ -187,9 +201,8 @@ async fn main_loop(mut rx: mpsc::UnboundedReceiver<Command>, url: String) {
                     }
                     None => {
                         tracing::error!(url = %url, "Connection closed by server.");
-                        let err = Arc::new(anyhow::anyhow!("Connection closed by server."));
                         pending_requests.drain().for_each(|(_, sender)| {
-                            sender.send(Err(err.clone())).ok();
+                            sender.send(Err(anyhow::anyhow!("Connection closed by server."))).ok();
                         });
                         sink = None;
                         stream = Either::Right(stream::pending());
@@ -199,9 +212,6 @@ async fn main_loop(mut rx: mpsc::UnboundedReceiver<Command>, url: String) {
             }
             command = rx.recv() => {
                 match command {
-                    Some(Command::IsReady { reply }) => {
-                        reply.send(sink.is_some()).ok();
-                    }
                     Some(Command::Query { request, reply }) => {
                         if let Some(sink) = &mut sink {
                             req_id += 1;
@@ -221,7 +231,35 @@ async fn main_loop(mut rx: mpsc::UnboundedReceiver<Command>, url: String) {
                             };
                             sink.send(msg).await.ok();
                         } else {
-                            reply.send(Err(Arc::new(anyhow::anyhow!("Not ready.")))).ok();
+                            reply.send(Err(anyhow::anyhow!("Not ready."))).ok();
+                        }
+                    }
+                    Some(Command::Subscribe { request, reply }) => {
+                        if let Some(sink) = &mut sink {
+                            req_id += 1;
+                            let id = format!("{}", req_id);
+                            let (tx, mut rx) = mpsc::unbounded_channel();
+                            subscribes.insert(id.clone(), tx);
+                            reply.send(Ok(Box::pin(async_stream::stream! {
+                                while let Some(item) = rx.recv().await {
+                                    yield item;
+                                }
+                            }))).ok();
+                            let msg = match protocol {
+                                Protocols::SubscriptionsTransportWS => {
+                                    Message::text(
+                                        serde_json::to_string(&ClientMessage::Start { id: &id, payload: request }
+                                    ).unwrap())
+                                }
+                                Protocols::GraphQLWS => {
+                                    Message::text(
+                                        serde_json::to_string(&ClientMessage::Subscribe { id: &id, payload: request }
+                                    ).unwrap())
+                                }
+                            };
+                            sink.send(msg).await.ok();
+                        } else {
+                            reply.send(Err(anyhow::anyhow!("Not ready."))).ok();
                         }
                     }
                     None => return,

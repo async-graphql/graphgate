@@ -52,5 +52,15 @@ jobs:
         uses: docker/build-push-action@v2
         with:
           push: true
-          context: ./examples/${{ matrix.package.name }}
+          context: ./examples
+          file: Dockerfile-${{ matrix.package.name }}
           tags: scott829/graphgate-example-${{ matrix.package.name }}:latest
+      - name: Kubernetes toolset installer
+        uses: yokawasa/action-setup-kube-tools@v0.2.0
+      - name: Deployment
+        run: |
+          mkdir ~/.kube
+          cat ${{ secrets.K8S_CONFIG }} > ~/.kube/config
+          cd examples
+          helm upgrade -i -n graphgate graphgate .
+          

@@ -1,6 +1,7 @@
+use anyhow::Result;
 use futures_util::future::TryFutureExt;
+use futures_util::stream::BoxStream;
 use graphgate_core::{Request, Response};
-use reqwest::Error;
 
 use crate::transport::Transport;
 
@@ -20,18 +21,17 @@ impl HttpTransport {
 
 #[async_trait::async_trait]
 impl Transport for HttpTransport {
-    type Error = Error;
-
-    async fn is_ready(&self) -> bool {
-        true
-    }
-
-    async fn query(&self, request: Request) -> Result<Response, Self::Error> {
-        self.client
+    async fn query(&self, request: Request) -> Result<Response> {
+        Ok(self
+            .client
             .post(&self.url)
             .json(&request)
             .send()
             .and_then(|resp| resp.json::<Response>())
-            .await
+            .await?)
+    }
+
+    async fn subscribe(&self, _request: Request) -> Result<BoxStream<'static, Response>> {
+        anyhow::bail!("Not supported.")
     }
 }

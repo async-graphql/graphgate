@@ -172,7 +172,7 @@ pub struct ComposedSchema {
     pub(crate) subscription_type: Option<Name>,
     pub(crate) types: HashMap<Name, MetaType>,
     pub(crate) directives: HashMap<Name, MetaDirective>,
-    pub services: IndexMap<String, Vec<String>>,
+    pub services: IndexMap<String, String>,
 }
 
 impl ComposedSchema {
@@ -206,7 +206,7 @@ impl ComposedSchema {
         federation_sdl: impl IntoIterator<Item = (String, ServiceDocument)>,
     ) -> ::std::result::Result<Self, CombineError> {
         let mut composed_schema = ComposedSchema::default();
-        let root_objects = &["Query", "Mutation"];
+        let root_objects = &["Query", "Mutation", "Subscription"];
 
         for obj in root_objects {
             let name = Name::new(obj);
@@ -230,6 +230,7 @@ impl ComposedSchema {
 
         composed_schema.query_type = Some(Name::new("Query"));
         composed_schema.mutation_type = Some(Name::new("Mutation"));
+        composed_schema.subscription_type = Some(Name::new("Subscription"));
 
         for (service, doc) in federation_sdl {
             for definition in doc.definitions {
@@ -339,6 +340,13 @@ impl ComposedSchema {
             }
         }
 
+        if let Some(subscription) = composed_schema.types.get("Subscription") {
+            if subscription.fields.is_empty() {
+                composed_schema.types.remove("Subscription");
+                composed_schema.subscription_type = None;
+            }
+        }
+
         finish_schema(&mut composed_schema);
         Ok(composed_schema)
     }
@@ -422,9 +430,7 @@ fn convert_schema_definition(
             {
                 composed_schema
                     .services
-                    .entry(name.node.to_string())
-                    .or_default()
-                    .push(url.node.to_string());
+                    .insert(name.node.to_string(), url.node.to_string());
             }
         }
     }

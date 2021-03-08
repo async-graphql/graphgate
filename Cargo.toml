@@ -26,6 +26,12 @@ schemars = { version = "0.8.0", features = ["chrono"] }
 chrono = { version = "0.4.19", features = ["serde"] }
 serde_yaml = "0.8.17"
 thiserror = "1.0.24"
+async-stream = "0.3.0"
+
+[dev-dependencies]
+async-graphql = { git = "https://github.com/async-graphql/async-graphql", default-features = false }
+async-graphql-warp = { git = "https://github.com/async-graphql/async-graphql" }
+fastrand = "1.4.0"
 
 [workspace]
 members = [

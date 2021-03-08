@@ -1,12 +1,14 @@
-use std::fmt::Display;
-
+use anyhow::Result;
+use futures_util::stream::BoxStream;
 use graphgate_core::{Request, Response};
 
 #[async_trait::async_trait]
 pub trait Transport: Sync + Send + 'static {
-    type Error: Display + 'static;
+    async fn query(&self, request: Request) -> Result<Response>;
 
-    async fn is_ready(&self) -> bool;
+    fn is_support_subscribe(&self) -> bool {
+        false
+    }
 
-    async fn query(&self, request: Request) -> Result<Response, Self::Error>;
+    async fn subscribe(&self, request: Request) -> Result<BoxStream<'static, Response>>;
 }

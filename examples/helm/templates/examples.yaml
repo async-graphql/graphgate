@@ -3,23 +3,23 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ . }}
+  name: {{ .name }}
 spec:
   replicas: 3
   selector:
     matchLabels:
-      app: {{ . }}
+      app: {{ .name }}
   strategy:
     type: RollingUpdate
   template:
     metadata:
       labels:
-        app: {{ . }}
+        app: {{ .name }}
     spec:
       containers:
-        - image: scott829/graphgate-example-{{ . }}:latest
+        - image: scott829/graphgate-example-{{ .name }}:latest
           imagePullPolicy: Always
-          name: {{ . }}
+          name: {{ .name }}
           ports:
             - containerPort: 8000
               name: http
@@ -27,15 +27,15 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ . }}
+  name: {{ .name }}
   labels:
-    graphgate.org/service: {{ . }}
+    graphgate.org/service: {{ .name }}
     graphgate.org/protocol: http
 spec:
   ports:
     - name: http
-      port: 8000
+      port: {{ .port }}
       targetPort: 8000
   selector:
-    app: {{ . }}
+    app: {{ .name }}
 {{- end }}

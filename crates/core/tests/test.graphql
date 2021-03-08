@@ -1,0 +1,56 @@
+directive @composedGraph(version: Int!) on SCHEMA
+directive @service(name: String! url: String!) on SCHEMA
+directive @owner(service: String!) on OBJECT
+directive @key(fields: String! service: String!) on OBJECT
+directive @resolve(service: String!) on FIELD_DEFINITION
+directive @provides(fields: String!) on FIELD_DEFINITION
+directive @requires(fields: String!) on FIELD_DEFINITION
+
+schema
+@composedGraph(version: 1)
+{
+    query: Query
+    subscription: Subscription
+}
+
+type Query {
+    me: User @resolve(service: "accounts")
+    user(id: ID!): User @resolve(service: "accounts")
+    topProducts: [Product!] @resolve(service: "products")
+}
+
+type Subscription {
+    users: User @resolve(service: "accounts")
+    products: Product @resolve(service: "products")
+    reviews: Review @resolve(service: "reviews")
+}
+
+type User
+@owner(service: "accounts")
+@key(fields: "id" service: "accounts")
+@key(fields: "id" service: "reviews")
+{
+    id: ID!
+    username: String!
+    reviews: [Review]! @resolve(service: "reviews")
+}
+
+type Product
+@owner(service: "products")
+@key(fields: "upc" service: "accounts")
+@key(fields: "upc" service: "products")
+@key(fields: "upc" service: "reviews")
+{
+    upc: String!
+    name: String!
+    price: Int!
+    reviews: [Review]! @resolve(service: "reviews")
+}
+
+type Review
+@owner(service: "reviews")
+{
+    body: String
+    author: User
+    product: Product
+}

@@ -1,6 +1,9 @@
-use async_graphql::{Context, EmptyMutation, EmptySubscription, Object, Schema, SimpleObject, ID};
-use async_graphql_warp::graphql;
 use std::convert::Infallible;
+
+use async_graphql::{Context, EmptyMutation, Object, Schema, SimpleObject, Subscription, ID};
+use async_graphql_warp::{graphql, graphql_subscription};
+use futures_util::stream::Stream;
+use tokio::time::Duration;
 use warp::{Filter, Reply};
 
 struct User {
@@ -65,6 +68,26 @@ impl Query {
     }
 }
 
+struct Subscription;
+
+#[Subscription(extends)]
+impl Subscription {
+    async fn reviews(&self) -> impl Stream<Item = Review> {
+        async_stream::stream! {
+            loop {
+                tokio::time::sleep(Duration::from_secs(fastrand::u64((5..10)))).await;
+                yield Review {
+                    body: "A highly effective form of birth control.".into(),
+                    author: User { id: "1234".into() },
+                    product: Product {
+                        upc: "top-1".to_string(),
+                    },
+                };
+            }
+        }
+    }
+}
+
 #[tokio::main]
 async fn main() {
     let reviews = vec![
@@ -91,18 +114,25 @@ async fn main() {
         },
     ];
 
-    let schema = Schema::build(Query, EmptyMutation, EmptySubscription)
+    let schema = Schema::build(Query, EmptyMutation, Subscription)
         .data(reviews)
         .finish();
 
-    warp::serve(graphql(schema).and_then(
-        |(schema, request): (
-            Schema<Query, EmptyMutation, EmptySubscription>,
-            async_graphql::Request,
-        )| async move {
-            Ok::<_, Infallible>(warp::reply::json(&schema.execute(request).await).into_response())
-        },
-    ))
-    .run(([0, 0, 0, 0], 8000))
+    warp::serve(
+        graphql(schema.clone())
+            .and(warp::post())
+            .and_then(
+                |(schema, request): (
+                    Schema<Query, EmptyMutation, Subscription>,
+                    async_graphql::Request,
+                )| async move {
+                    Ok::<_, Infallible>(
+                        warp::reply::json(&schema.execute(request).await).into_response(),
+                    )
+                },
+            )
+            .or(graphql_subscription(schema)),
+    )
+    .run(([0, 0, 0, 0], 8003))
     .await;
 }

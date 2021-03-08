@@ -13,6 +13,7 @@ use value::{ConstValue, Name, Value, Variables};
 use super::plan::{
     FetchNode, FlattenNode, IntrospectionDirective, IntrospectionField, IntrospectionNode,
     IntrospectionSelectionSet, ParallelNode, PathSegment, PlanNode, ResponsePath, SequenceNode,
+    SubscribeNode,
 };
 use super::types::{
     FetchEntity, FetchEntityGroup, FetchEntityKey, FieldRef, RequiredRef, RootGroup, SelectionRef,
@@ -56,7 +57,7 @@ impl<'a> PlanBuilder<'a> {
         Self { variables, ..self }
     }
 
-    pub fn plan(&self) -> Result<PlanNode, Response> {
+    fn check_rules(&self) -> Result<(), Response> {
         let rule_errors = check_rules(self.schema, &self.document, &self.variables);
         if !rule_errors.is_empty() {
             return Err(Response {
@@ -70,16 +71,24 @@ impl<'a> PlanBuilder<'a> {
                     .collect(),
             });
         }
+        Ok(())
+    }
 
+    fn create_context(&self) -> Context<'_> {
         let fragments = &self.document.fragments;
-        let operation_definition = get_operation(&self.document, self.operation_name.as_deref());
-        let mut ctx = Context {
+        Context {
             schema: self.schema,
             fragments,
             variables: &self.variables,
             key_id: 1,
-        };
-        let is_mutation = operation_definition.node.ty == OperationType::Mutation;
+        }
+    }
+
+    pub fn plan(&self) -> Result<PlanNode, Response> {
+        self.check_rules()?;
+
+        let mut ctx = self.create_context();
+        let operation_definition = get_operation(&self.document, self.operation_name.as_deref());
 
         let root_type = match operation_definition.node.ty {
             OperationType::Query => ctx.schema.query_type(),
@@ -88,23 +97,73 @@ impl<'a> PlanBuilder<'a> {
                 None => unreachable!("The query validator should find this error."),
             },
             OperationType::Subscription => {
-                unreachable!("The query validator should find this error.")
+                return Err(Response {
+                    data: ConstValue::Null,
+                    errors: vec![ServerError {
+                        message: "Not supported".to_string(),
+                        locations: Default::default(),
+                    }],
+                })
             }
         };
 
         if let Some(root_type) = ctx.schema.types.get(root_type) {
-            if !is_mutation {
-                Ok(ctx.build_root_selection_set(
+            match operation_definition.node.ty {
+                OperationType::Query => Ok(ctx.build_root_selection_set(
                     QueryRootGroup::default(),
+                    operation_definition.node.ty,
                     root_type,
                     &operation_definition.node.selection_set.node,
-                ))
-            } else {
-                Ok(ctx.build_root_selection_set(
+                )),
+                OperationType::Mutation => Ok(ctx.build_root_selection_set(
                     MutationRootGroup::default(),
+                    operation_definition.node.ty,
                     root_type,
                     &operation_definition.node.selection_set.node,
-                ))
+                )),
+                OperationType::Subscription => unreachable!(),
+            }
+        } else {
+            unreachable!("The query validator should find this error.")
+        }
+    }
+
+    pub fn plan_subscribe(&self) -> Result<SubscribeNode, Response> {
+        self.check_rules()?;
+
+        let mut ctx = self.create_context();
+        let operation_definition = get_operation(&self.document, self.operation_name.as_deref());
+
+        let root_type = match operation_definition.node.ty {
+            OperationType::Query => ctx.schema.query_type(),
+            OperationType::Mutation => match ctx.schema.mutation_type() {
+                Some(mutation_type) => mutation_type,
+                None => unreachable!("The query validator should find this error."),
+            },
+            OperationType::Subscription => match ctx.schema.subscription_type() {
+                Some(subscription_type) => subscription_type,
+                None => unreachable!("The query validator should find this error."),
+            },
+        };
+
+        if let Some(root_type) = ctx.schema.types.get(root_type) {
+            match operation_definition.node.ty {
+                OperationType::Query => Ok(SubscribeNode::Query(ctx.build_root_selection_set(
+                    QueryRootGroup::default(),
+                    operation_definition.node.ty,
+                    root_type,
+                    &operation_definition.node.selection_set.node,
+                ))),
+                OperationType::Mutation => Ok(SubscribeNode::Query(ctx.build_root_selection_set(
+                    MutationRootGroup::default(),
+                    operation_definition.node.ty,
+                    root_type,
+                    &operation_definition.node.selection_set.node,
+                ))),
+                OperationType::Subscription => {
+                    Ok(ctx
+                        .build_subscribe(root_type, &operation_definition.node.selection_set.node))
+                }
             }
         } else {
             unreachable!("The query validator should find this error.")
@@ -116,6 +175,7 @@ impl<'a> Context<'a> {
     fn build_root_selection_set(
         &mut self,
         mut root_group: impl RootGroup<'a>,
+        operation_type: OperationType,
         parent_type: &'a MetaType,
         selection_set: &'a SelectionSet,
     ) -> PlanNode<'a> {
@@ -131,7 +191,6 @@ impl<'a> Context<'a> {
                 match &selection.node {
                     Selection::Field(field) => {
                         let field_name = field.node.name.node.as_str();
-
                         let field_definition = match parent_type.fields.get(field_name) {
                             Some(field_definition) => field_definition,
                             None => continue,
@@ -210,7 +269,7 @@ impl<'a> Context<'a> {
             for (service, selection_set) in root_group.into_selection_set() {
                 nodes.push(PlanNode::Fetch(FetchNode {
                     service,
-                    query: selection_set.to_query(self.variables),
+                    query: selection_set.to_query(Some(operation_type), self.variables),
                 }));
             }
             PlanNode::Parallel(ParallelNode { nodes }).flatten()
@@ -248,7 +307,7 @@ impl<'a> Context<'a> {
                 let query = format!(
                     "query($representations:[_Any!]!) {{ _entities(representations:$representations) {{ ... on {} {} }} }}",
                     parent_type.name,
-                    selection_ref_set.to_query(self.variables)
+                    selection_ref_set.to_query(None, self.variables)
                 );
                 flatten_nodes.push(PlanNode::Flatten(FlattenNode {
                     path,
@@ -269,6 +328,107 @@ impl<'a> Context<'a> {
         }
 
         PlanNode::Sequence(SequenceNode { nodes }).flatten()
+    }
+
+    fn build_subscribe(
+        &mut self,
+        parent_type: &'a MetaType,
+        selection_set: &'a SelectionSet,
+    ) -> SubscribeNode<'a> {
+        let mut root_group = QueryRootGroup::default();
+        let mut fetch_entity_group = FetchEntityGroup::default();
+
+        for selection in &selection_set.items {
+            if let Selection::Field(field) = &selection.node {
+                let field_name = field.node.name.node.as_str();
+                let field_definition = match parent_type.fields.get(field_name) {
+                    Some(field_definition) => field_definition,
+                    None => continue,
+                };
+
+                if let Some(service) = &field_definition.service {
+                    let selection_ref_set = root_group.selection_set_mut(service);
+                    let mut path = ResponsePath::default();
+                    self.build_field(
+                        &mut path,
+                        selection_ref_set,
+                        &mut fetch_entity_group,
+                        service,
+                        parent_type,
+                        &field.node,
+                    );
+                }
+            }
+        }
+
+        let fetch_nodes = {
+            let mut nodes = Vec::new();
+            for (service, selection_set) in root_group.into_selection_set() {
+                nodes.push(FetchNode {
+                    service,
+                    query: selection_set
+                        .to_query(Some(OperationType::Subscription), self.variables),
+                });
+            }
+            nodes
+        };
+
+        let mut query_nodes = Vec::new();
+        while !fetch_entity_group.is_empty() {
+            let mut flatten_nodes = Vec::new();
+            let mut next_group = FetchEntityGroup::new();
+
+            for (
+                FetchEntityKey {
+                    service, mut path, ..
+                },
+                FetchEntity {
+                    parent_type,
+                    prefix,
+                    fields,
+                },
+            ) in fetch_entity_group
+            {
+                let mut selection_ref_set = SelectionRefSet::default();
+
+                for field in fields {
+                    self.build_field(
+                        &mut path,
+                        &mut selection_ref_set,
+                        &mut next_group,
+                        service,
+                        parent_type,
+                        field,
+                    );
+                }
+
+                let query = format!(
+                    "query($representations:[_Any!]!) {{ _entities(representations:$representations) {{ ... on {} {} }} }}",
+                    parent_type.name,
+                    selection_ref_set.to_query(None, self.variables)
+                );
+                flatten_nodes.push(PlanNode::Flatten(FlattenNode {
+                    path,
+                    prefix,
+                    service,
+                    parent_type: parent_type.name.as_str(),
+                    query,
+                }));
+            }
+
+            query_nodes.push(
+                PlanNode::Parallel(ParallelNode {
+                    nodes: flatten_nodes,
+                })
+                .flatten(),
+            );
+            fetch_entity_group = next_group;
+        }
+
+        SubscribeNode::Subscribe {
+            fetch_nodes,
+            query_nodes: PlanNode::Sequence(SequenceNode { nodes: query_nodes }),
+        }
     }
 
     fn build_introspection_field(

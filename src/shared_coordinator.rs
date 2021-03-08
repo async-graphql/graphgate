@@ -1,7 +1,11 @@
 use std::sync::Arc;
 
 use anyhow::{Context, Error, Result};
-use graphgate_core::{ComposedSchema, Coordinator, Executor, PlanBuilder, Request};
+use futures_util::stream::BoxStream;
+use futures_util::StreamExt;
+use graphgate_core::{
+    ComposedSchema, Coordinator, Executor, PlanBuilder, Request, Response, ServerError,
+};
 use graphgate_transports::CoordinatorImpl;
 use serde::Deserialize;
 use tokio::sync::{mpsc, Mutex};
@@ -50,12 +54,13 @@ impl SharedCoordinator {
 
     async fn update_loop(self, mut rx: mpsc::UnboundedReceiver<Command>) {
         let mut update_interval = tokio::time::interval(Duration::from_secs(30));
+        tokio::time::sleep(Duration::from_secs(5)).await;
 
         loop {
             tokio::select! {
                 _ = update_interval.tick() => {
                     if let Err(err) = self.update().await {
-                        tracing::error!(error = %err, "Failed to update schema");
+                        tracing::error!(error = %err, "Failed to update schema.");
                     }
                 }
                 command = rx.recv() => {
@@ -162,5 +167,60 @@ impl SharedCoordinator {
             .status(StatusCode::OK)
             .body(serde_json::to_string(&executor.execute(&plan).await).unwrap())
             .unwrap()
+    }
+
+    pub async fn subscribe(&self, request: Request) -> BoxStream<'static, Response> {
+        let coordinator = self.clone();
+        let stream = async_stream::stream! {
+            let (composed_schema, coordinator) = {
+                let inner = coordinator.inner.lock().await;
+                (inner.schema.clone(), inner.coordinator.clone())
+            };
+
+            let (composed_schema, coordinator) = match (composed_schema, coordinator) {
+                (Some(composed_schema), Some(coordinator)) => (composed_schema, coordinator),
+                _ => {
+                    yield Response {
+                        errors: vec![ServerError {
+                            message: "Not ready.".to_string(),
+                            locations: Default::default(),
+                        }],
+                        ..Response::default()
+                    };
+                    return;
+                }
+            };
+
+            let document = match parser::parse_query(request.query) {
+                Ok(document) => document,
+                Err(err) => {
+                    yield Response {
+                        errors: vec![ServerError {
+                            message: err.to_string(),
+                            locations: Default::default(),
+                        }],
+                        ..Response::default()
+                    };
+                    return;
+                }
+            };
+            let mut plan_builder = PlanBuilder::new(&composed_schema, document).variables(request.variables);
+            if let Some(operation) = request.operation {
+                plan_builder = plan_builder.operation_name(operation);
+            }
+            let plan = match plan_builder.plan_subscribe() {
+                Ok(plan) => plan,
+                Err(response) => {
+                    yield response;
+                    return;
+                }
+            };
+            let executor = Executor::new(&composed_schema, &*coordinator);
+            let mut stream = executor.execute_stream(&plan).await;
+            while let Some(resp) = stream.next().await {
+                yield resp;
+            }
+        };
+        Box::pin(stream)
     }
 }

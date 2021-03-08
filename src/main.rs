@@ -8,7 +8,7 @@ use std::net::SocketAddr;
 
 use anyhow::{Context, Result};
 use graphgate_core::ComposedSchema;
-use graphgate_transports::{CoordinatorImpl, RoundRobinTransport};
+use graphgate_transports::CoordinatorImpl;
 use structopt::StructOpt;
 use tokio::time::Duration;
 use tracing_subscriber::prelude::*;
@@ -16,7 +16,7 @@ use tracing_subscriber::{fmt, EnvFilter};
 use warp::Filter;
 
 use config::Config;
-use http::graphql_filter;
+use http::graphql;
 use options::Options;
 use shared_coordinator::SharedCoordinator;
 
@@ -49,9 +49,7 @@ async fn start_with_config_file(config_file: String) -> Result<()> {
         .context(format!("Failed to parse bind addr '{}'", config.bind))?;
 
     tracing::info!(addr = %bind_addr, "Listening");
-    warp::serve(graphql_filter(coordinator))
-        .bind(bind_addr)
-        .await;
+    warp::serve(graphql(coordinator)).bind(bind_addr).await;
     Ok(())
 }
 
@@ -63,14 +61,8 @@ async fn start_with_schema_file(schema_file: String, bind: String) -> Result<()>
     .with_context(|| format!("Failed to parse schema file '{}'", schema_file))?;
 
     let mut coordinator = CoordinatorImpl::default();
-    for (service, urls) in &schema.services {
-        let mut transport = RoundRobinTransport::default();
-        for url in urls {
-            transport = transport
-                .add_url(url)
-                .context(format!("Invalid service url '{}'", url))?;
-        }
-        coordinator = coordinator.add(service, transport);
+    for (service, url) in &schema.services {
+        coordinator = coordinator.add_url(service, url)?;
     }
 
     let bind_addr: SocketAddr = bind
@@ -78,11 +70,9 @@ async fn start_with_schema_file(schema_file: String, bind: String) -> Result<()>
         .context(format!("Failed to parse bind addr '{}'", bind))?;
 
     tracing::info!(addr = %bind_addr, "Listening");
-    warp::serve(graphql_filter(SharedCoordinator::with_coordinator(
-        coordinator,
-    )))
-    .bind(bind_addr)
-    .await;
+    warp::serve(graphql(SharedCoordinator::with_coordinator(coordinator)))
+        .bind(bind_addr)
+        .await;
     Ok(())
 }
 
@@ -123,7 +113,7 @@ async fn start_in_k8s(bind: String) -> Result<()> {
         .parse()
         .context(format!("Failed to parse bind addr '{}'", bind))?;
 
-    let graphql = warp::path::end().and(http::graphql_filter(shared_coordinator));
+    let graphql = warp::path::end().and(http::graphql(shared_coordinator));
     let health = warp::path!("health").map(|| warp::reply::json(&"healthy"));
     let routes = graphql.or(health);
 

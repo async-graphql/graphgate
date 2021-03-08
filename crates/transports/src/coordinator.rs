@@ -1,14 +1,14 @@
 use std::collections::HashMap;
 
 use anyhow::{Error, Result};
+use futures_util::stream::BoxStream;
 use graphgate_core::{Coordinator, Request, Response};
 
 use crate::transport::Transport;
 use crate::utils::create_transport;
-use crate::wrapper::TransportWrapper;
 
 #[derive(Default)]
-pub struct CoordinatorImpl(HashMap<String, Box<dyn Transport<Error = Error>>>);
+pub struct CoordinatorImpl(HashMap<String, Box<dyn Transport>>);
 
 #[async_trait::async_trait]
 impl Coordinator for CoordinatorImpl {
@@ -24,12 +24,22 @@ impl Coordinator for CoordinatorImpl {
             None => anyhow::bail!("Service '{}' is not defined."),
         }
     }
+
+    async fn subscribe(
+        &self,
+        service: &str,
+        request: Request,
+    ) -> Result<BoxStream<'static, Response>, Self::Error> {
+        match self.0.get(service) {
+            Some(transport) => transport.subscribe(request).await,
+            None => anyhow::bail!("Service '{}' is not defined."),
+        }
+    }
 }
 
 impl CoordinatorImpl {
     pub fn add(mut self, service: impl Into<String>, transport: impl Transport) -> Self {
-        self.0
-            .insert(service.into(), Box::new(TransportWrapper(transport)));
+        self.0.insert(service.into(), Box::new(transport));
         self
     }
 

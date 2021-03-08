@@ -3,6 +3,9 @@ port: 8000
 replicas: 3
 
 services:
-  - accounts
-  - products
-  - reviews
+  - name: accounts
+    port: 8001
+  - name: products
+    port: 8002
+  - name: reviews
+    port: 8003

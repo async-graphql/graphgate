@@ -1,7 +1,7 @@
 use std::fmt::{Result as FmtResult, Write};
 
 use indexmap::IndexMap;
-use parser::types::{Directive, Field};
+use parser::types::{Directive, Field, OperationType};
 use parser::Positioned;
 use value::{Name, Value, Variables};
 
@@ -33,8 +33,15 @@ pub enum SelectionRef<'a> {
 pub struct SelectionRefSet<'a>(pub Vec<SelectionRef<'a>>);
 
 impl<'a> SelectionRefSet<'a> {
-    pub fn to_query(&self, variables: &Variables) -> String {
+    pub fn to_query(&self, operation_type: Option<OperationType>, variables: &Variables) -> String {
         let mut s = String::new();
+        if let Some(operation_type) = operation_type {
+            match operation_type {
+                OperationType::Query => s.push_str("query "),
+                OperationType::Mutation => s.push_str("mutation "),
+                OperationType::Subscription => s.push_str("subscription "),
+            }
+        }
         stringify_selection_ref_set_rec(&mut s, variables, self).unwrap();
         s
     }
