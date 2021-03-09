@@ -8,7 +8,6 @@ use kube::{Api, Client};
 
 const NAMESPACE_PATH: &str = "/var/run/secrets/kubernetes.io/serviceaccount/namespace";
 const LABEL_GRAPHQL_SERVICE: &str = "graphgate.org/service";
-const LABEL_GRAPHQL_PROTOCOL: &str = "graphgate.org/protocol";
 
 fn get_label_value<'a>(meta: &'a ObjectMeta, name: &str) -> Option<&'a str> {
     meta.labels
@@ -38,12 +37,11 @@ pub async fn find_graphql_services() -> Result<HashMap<String, String>> {
         .context("Failed to call list services api")?;
 
     for service in &services {
-        if let Some(((host, service_name), protocol)) = service
+        if let Some((host, service_name)) = service
             .metadata
             .name
             .as_deref()
             .zip(get_label_value(&service.metadata, LABEL_GRAPHQL_SERVICE))
-            .zip(get_label_value(&service.metadata, LABEL_GRAPHQL_PROTOCOL))
         {
             for service_port in service
                 .spec
@@ -52,10 +50,12 @@ pub async fn find_graphql_services() -> Result<HashMap<String, String>> {
                 .flatten()
                 .flatten()
             {
-                graphql_services.insert(
-                    service_name.to_string(),
-                    format!("{}://{}:{}", protocol, host, service_port.port),
-                );
+                if let Some(protocol) = &service_port.protocol {
+                    graphql_services.insert(
+                        service_name.to_string(),
+                        format!("{}://{}:{}", protocol, host, service_port.port),
+                    );
+                }
             }
         }
     }

@@ -5,7 +5,10 @@ replicas: 3
 services:
   - name: accounts
     port: 8001
+    protocol: ws
   - name: products
     port: 8002
+    protocol: ws
   - name: reviews
     port: 8003
+    protocol: ws

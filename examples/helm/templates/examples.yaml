@@ -5,7 +5,7 @@ kind: Deployment
 metadata:
   name: {{ .name }}
 spec:
-  replicas: 3
+  replicas: {{ $.Values.replicas }}
   selector:
     matchLabels:
       app: {{ .name }}
@@ -17,12 +17,14 @@ spec:
         app: {{ .name }}
     spec:
       containers:
-        - image: scott829/graphgate-example-{{ .name }}:latest
+        - image: scott829/graphgate-examples:latest
           imagePullPolicy: Always
           name: {{ .name }}
           ports:
             - containerPort: 8000
               name: http
+          command:
+            - {{ .name }}
 ---
 apiVersion: v1
 kind: Service
@@ -30,10 +32,9 @@ metadata:
   name: {{ .name }}
   labels:
     graphgate.org/service: {{ .name }}
-    graphgate.org/protocol: http
 spec:
   ports:
-    - name: http
+    - name: {{ .protocol }}
       port: {{ .port }}
       targetPort: 8000
   selector:

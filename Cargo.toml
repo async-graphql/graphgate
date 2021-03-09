@@ -29,8 +29,8 @@ thiserror = "1.0.24"
 async-stream = "0.3.0"
 
 [dev-dependencies]
-async-graphql = { git = "https://github.com/async-graphql/async-graphql", default-features = false }
-async-graphql-warp = { git = "https://github.com/async-graphql/async-graphql" }
+async-graphql = { version = "2.5.12", default-features = false }
+async-graphql-warp = "2.5.12"
 fastrand = "1.4.0"
 
 [workspace]

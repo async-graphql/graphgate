@@ -6,7 +6,7 @@ on:
       - release
 
 jobs:
-  docker:
+  graphgate-docker:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -33,12 +33,7 @@ jobs:
 
   examples-docker:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        package:
-          - name: accounts
-          - name: products
-          - name: reviews
+    needs: graphgate-docker
     steps:
       - name: Checkout
         uses: actions/checkout@v2
@@ -52,15 +47,11 @@ jobs:
         uses: docker/build-push-action@v2
         with:
           push: true
-          context: ./examples
-          file: Dockerfile-${{ matrix.package.name }}
-          tags: scott829/graphgate-example-${{ matrix.package.name }}:latest
-      - name: Kubernetes toolset installer
-        uses: yokawasa/action-setup-kube-tools@v0.2.0
-      - name: Deployment
-        run: |
-          mkdir ~/.kube
-          cat ${{ secrets.K8S_CONFIG }} > ~/.kube/config
-          cd examples
-          helm upgrade -i -n graphgate graphgate .
-          
+          context: .
+          file: Dockerfile-examples
+          tags: scott829/graphgate-examples:latest
+      - name: Deploy to Kubernetes
+        uses: WyriHaximus/github-action-helm3@v2
+        with:
+          kubeconfig: '${{ secrets.K8S_CONFIG }}'
+          exec: helm upgrade -i -n graphgate graphgate examples/helm
