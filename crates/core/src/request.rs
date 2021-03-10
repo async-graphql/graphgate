@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use value::Variables;
+use value::{ConstValue, Variables};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Request {
@@ -27,6 +27,13 @@ impl Request {
 
     pub fn variables(self, variables: Variables) -> Self {
         Self { variables, ..self }
+    }
+
+    pub fn extend_variables(mut self, variables: Variables) -> Self {
+        if let ConstValue::Object(obj) = variables.into_value() {
+            self.variables.extend(obj);
+        }
+        self
     }
 }
 

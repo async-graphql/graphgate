@@ -2,7 +2,7 @@ use std::collections::HashSet;
 use std::fmt::{Display, Formatter, Result as FmtResult};
 
 use parser::types::{BaseType, Type};
-use value::{ConstValue, Value};
+use value::ConstValue;
 
 use crate::schema::TypeKind;
 use crate::ComposedSchema;
@@ -62,27 +62,6 @@ impl<'a> Display for PathNode<'a> {
         }
         write_node(f, self)
     }
-}
-
-pub fn referenced_variables(value: &Value) -> Vec<&str> {
-    fn referenced_variables_to_vec<'a>(value: &'a Value, vars: &mut Vec<&'a str>) {
-        match value {
-            Value::Variable(name) => {
-                vars.push(name);
-            }
-            Value::List(values) => values
-                .iter()
-                .for_each(|value| referenced_variables_to_vec(value, vars)),
-            Value::Object(obj) => obj
-                .values()
-                .for_each(|value| referenced_variables_to_vec(value, vars)),
-            _ => {}
-        }
-    }
-
-    let mut vars = Vec::new();
-    referenced_variables_to_vec(value, &mut vars);
-    vars
 }
 
 fn valid_error(path_node: &PathNode, msg: String) -> String {

@@ -1,24 +1,28 @@
-use std::fmt::{Result as FmtResult, Write};
+use std::collections::HashMap;
+use std::fmt::{Display, Formatter, Result as FmtResult};
 
 use indexmap::IndexMap;
-use parser::types::{Directive, Field, OperationType};
+use parser::types::{Directive, Field, OperationType, VariableDefinition};
 use parser::Positioned;
 use value::{Name, Value, Variables};
 
 use super::plan::ResponsePath;
-use crate::schema::{KeyFields, MetaType};
+use crate::schema::{ConstValue, KeyFields, MetaType};
 
+#[derive(Debug)]
 pub struct FieldRef<'a> {
     pub field: &'a Field,
     pub selection_set: SelectionRefSet<'a>,
 }
 
+#[derive(Debug)]
 pub struct RequiredRef<'a> {
     pub prefix: usize,
     pub fields: &'a KeyFields,
     pub requires: Option<&'a KeyFields>,
 }
 
+#[derive(Debug)]
 pub enum SelectionRef<'a> {
     FieldRef(FieldRef<'a>),
     IntrospectionTypename,
@@ -29,156 +33,148 @@ pub enum SelectionRef<'a> {
     },
 }
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct SelectionRefSet<'a>(pub Vec<SelectionRef<'a>>);
 
-impl<'a> SelectionRefSet<'a> {
-    pub fn to_query(&self, operation_type: Option<OperationType>, variables: &Variables) -> String {
-        let mut s = String::new();
-        if let Some(operation_type) = operation_type {
-            match operation_type {
-                OperationType::Query => s.push_str("query "),
-                OperationType::Mutation => s.push_str("mutation "),
-                OperationType::Subscription => s.push_str("subscription "),
-            }
+impl<'a> Display for SelectionRefSet<'a> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        stringify_selection_ref_set_rec(f, self)
+    }
+}
+
+#[derive(Debug)]
+pub struct FetchSelectionSet<'a> {
+    pub operation_type: OperationType,
+    pub variable_definitions: VariableDefinitionRef<'a>,
+    pub selection_set: SelectionRefSet<'a>,
+}
+
+impl<'a> Display for FetchSelectionSet<'a> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        write!(f, "{}", self.operation_type)?;
+        if !self.variable_definitions.variables.is_empty() {
+            write!(f, "({})", self.variable_definitions)?;
         }
-        stringify_selection_ref_set_rec(&mut s, variables, self).unwrap();
-        s
+        write!(f, " {}", self.selection_set)?;
+        Ok(())
     }
 }
 
 fn stringify_argument(
-    w: &mut String,
-    variables: &Variables,
+    f: &mut Formatter<'_>,
     arguments: &[(Positioned<Name>, Positioned<Value>)],
 ) -> FmtResult {
-    write!(w, "(")?;
+    write!(f, "(")?;
     for (idx, (name, value)) in arguments.iter().enumerate() {
         if idx > 0 {
-            write!(w, " ")?;
+            write!(f, ", ")?;
         }
-        match &value.node {
-            Value::Variable(var_name) => {
-                if let Some(value) = variables.get(var_name.as_str()) {
-                    write!(w, "{}: {}", name.node, value)?;
-                } else {
-                    write!(w, "{}: {}", name.node, value.node)?;
-                }
-            }
-            _ => {
-                write!(w, "{}: {}", name.node, value.node)?;
-            }
-        }
+        write!(f, "{}: {}", name.node, value.node)?;
     }
-    write!(w, ")")
+    write!(f, ")")
 }
 
-fn stringify_directive(w: &mut String, variables: &Variables, directive: &Directive) -> FmtResult {
-    write!(w, "@{}", directive.name.node.as_str())?;
+fn stringify_directive(f: &mut Formatter<'_>, directive: &Directive) -> FmtResult {
+    write!(f, "@{}", directive.name.node.as_str())?;
     if !directive.arguments.is_empty() {
-        stringify_argument(w, variables, &directive.arguments)?;
+        stringify_argument(f, &directive.arguments)?;
     }
     Ok(())
 }
 
-fn stringify_directives(
-    w: &mut String,
-    variables: &Variables,
-    directives: &[Positioned<Directive>],
-) -> FmtResult {
+fn stringify_directives(f: &mut Formatter<'_>, directives: &[Positioned<Directive>]) -> FmtResult {
     for (idx, directive) in directives.iter().enumerate() {
         if idx > 0 {
-            write!(w, " ")?;
+            write!(f, " ")?;
         }
-        stringify_directive(w, variables, &directive.node)?;
+        stringify_directive(f, &directive.node)?;
     }
     Ok(())
 }
 
-fn stringify_key_fields(w: &mut String, prefix: usize, fields: &KeyFields) -> FmtResult {
-    fn stringify_key_fields_no_prefix(w: &mut String, fields: &KeyFields) -> FmtResult {
+fn stringify_key_fields(f: &mut Formatter<'_>, prefix: usize, fields: &KeyFields) -> FmtResult {
+    fn stringify_key_fields_no_prefix(f: &mut Formatter<'_>, fields: &KeyFields) -> FmtResult {
         if fields.is_empty() {
             return Ok(());
         }
-        write!(w, "{{")?;
+        write!(f, "{{")?;
         for (idx, (field_name, children)) in fields.iter().enumerate() {
             if idx > 0 {
-                write!(w, " ")?;
-                write!(w, "{}", field_name)?;
-                stringify_key_fields_no_prefix(w, children)?;
+                write!(f, " ")?;
+                write!(f, "{}", field_name)?;
+                stringify_key_fields_no_prefix(f, children)?;
             }
         }
-        write!(w, "}}")
+        write!(f, "}}")
     }
 
     for (idx, (field_name, children)) in fields.iter().enumerate() {
         if idx > 0 {
-            write!(w, " ")?;
+            write!(f, " ")?;
         }
-        write!(w, "__key{}_{}:{}", prefix, field_name, field_name)?;
-        stringify_key_fields_no_prefix(w, &children)?;
+        write!(f, "__key{}_{}:{}", prefix, field_name, field_name)?;
+        stringify_key_fields_no_prefix(f, &children)?;
     }
     Ok(())
 }
 
 fn stringify_selection_ref_set_rec(
-    w: &mut String,
-    variables: &Variables,
+    f: &mut Formatter<'_>,
     selection_set: &SelectionRefSet<'_>,
 ) -> FmtResult {
-    write!(w, "{{")?;
+    write!(f, "{{")?;
     for (idx, selection) in selection_set.0.iter().enumerate() {
         if idx > 0 {
-            write!(w, " ")?;
+            write!(f, " ")?;
         }
 
         match selection {
             SelectionRef::FieldRef(field) => {
                 if let Some(alias) = &field.field.alias {
-                    write!(w, "{}:", alias.node)?;
+                    write!(f, "{}:", alias.node)?;
                 }
-                write!(w, "{}", field.field.name.node)?;
+                write!(f, "{}", field.field.name.node)?;
                 if !field.field.arguments.is_empty() {
-                    write!(w, " ")?;
-                    stringify_argument(w, variables, &field.field.arguments)?;
+                    write!(f, " ")?;
+                    stringify_argument(f, &field.field.arguments)?;
                 }
                 if !field.field.directives.is_empty() {
-                    write!(w, " ")?;
-                    stringify_directives(w, variables, &field.field.directives)?;
+                    write!(f, " ")?;
+                    stringify_directives(f, &field.field.directives)?;
                 }
                 if !field.selection_set.0.is_empty() {
-                    write!(w, " ")?;
-                    stringify_selection_ref_set_rec(w, variables, &field.selection_set)?;
+                    write!(f, " ")?;
+                    stringify_selection_ref_set_rec(f, &field.selection_set)?;
                 }
             }
             SelectionRef::IntrospectionTypename => {
-                write!(w, "__typename")?;
+                write!(f, "__typename")?;
             }
             SelectionRef::RequiredRef(require_ref) => {
                 write!(
-                    w,
+                    f,
                     " ... {{ __key{}___typename:__typename ",
                     require_ref.prefix,
                 )?;
-                stringify_key_fields(w, require_ref.prefix, &require_ref.fields)?;
+                stringify_key_fields(f, require_ref.prefix, &require_ref.fields)?;
                 if let Some(requires) = require_ref.requires {
-                    stringify_key_fields(w, require_ref.prefix, &requires)?;
+                    stringify_key_fields(f, require_ref.prefix, &requires)?;
                 }
-                write!(w, " }} ")?;
+                write!(f, " }} ")?;
             }
             SelectionRef::InlineFragment {
                 type_condition,
                 selection_set,
             } => {
                 match type_condition {
-                    Some(type_condition) => write!(w, "... on {} ", type_condition)?,
-                    None => write!(w, "... ")?,
+                    Some(type_condition) => write!(f, "... on {} ", type_condition)?,
+                    None => write!(f, "... ")?,
                 }
-                stringify_selection_ref_set_rec(w, variables, selection_set)?;
+                stringify_selection_ref_set_rec(f, selection_set)?;
             }
         }
     }
-    write!(w, "}}")
+    write!(f, "}}")
 }
 
 pub trait RootGroup<'a> {
@@ -237,3 +233,44 @@ pub struct FetchEntityKey<'a> {
 }
 
 pub type FetchEntityGroup<'a> = IndexMap<FetchEntityKey<'a>, FetchEntity<'a>>;
+
+#[derive(Debug, Default)]
+pub struct VariableDefinitionRef<'a> {
+    pub variables: Vec<&'a VariableDefinition>,
+}
+
+impl<'a> Display for VariableDefinitionRef<'a> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        for (idx, variable_definition) in self.variables.iter().enumerate() {
+            if idx > 0 {
+                write!(f, ", ")?;
+            }
+            write!(
+                f,
+                "${}: {}",
+                variable_definition.name.node, variable_definition.var_type.node
+            )?;
+            if let Some(default_value) = &variable_definition.default_value {
+                write!(f, " = {}", default_value.node)?;
+            }
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Default)]
+pub struct VariablesRef<'a> {
+    pub variables: HashMap<&'a str, &'a ConstValue>,
+}
+
+impl<'a> VariablesRef<'a> {
+    pub fn to_variables(&self) -> Variables {
+        let mut variables = Variables::default();
+        variables.extend(
+            self.variables
+                .iter()
+                .map(|(name, value)| (Name::new(name), ConstValue::clone(value))),
+        );
+        variables
+    }
+}

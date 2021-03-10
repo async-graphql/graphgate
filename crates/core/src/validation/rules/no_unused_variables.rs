@@ -6,7 +6,8 @@ use parser::types::{
 use parser::{Pos, Positioned};
 use value::{Name, Value};
 
-use crate::validation::utils::{referenced_variables, Scope};
+use crate::utils::referenced_variables;
+use crate::validation::utils::Scope;
 use crate::validation::{Visitor, VisitorContext};
 
 #[derive(Default)]
@@ -117,7 +118,7 @@ impl<'a> Visitor<'a> for NoUnusedVariables<'a> {
             self.used_variables
                 .entry(*scope)
                 .or_insert_with(Vec::new)
-                .append(&mut referenced_variables(&value.node));
+                .extend(referenced_variables(&value.node));
         }
     }
 

@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use indexmap::IndexMap;
 use parser::types::{
     BaseType, DocumentOperations, ExecutableDocument, Field, FragmentDefinition, InlineFragment,
-    OperationDefinition, OperationType, Selection, SelectionSet, Type,
+    OperationDefinition, OperationType, Selection, SelectionSet, Type, VariableDefinition,
 };
 use parser::Positioned;
 use value::{ConstValue, Name, Value, Variables};
@@ -19,7 +19,9 @@ use super::types::{
     FetchEntity, FetchEntityGroup, FetchEntityKey, FieldRef, RequiredRef, RootGroup, SelectionRef,
     SelectionRefSet,
 };
-use crate::planner::types::{MutationRootGroup, QueryRootGroup};
+use crate::planner::types::{
+    FetchSelectionSet, MutationRootGroup, QueryRootGroup, VariableDefinitionRef, VariablesRef,
+};
 use crate::schema::{ComposedSchema, KeyFields, MetaField, MetaType, TypeKind};
 use crate::validation::check_rules;
 use crate::{Response, ServerError};
@@ -112,12 +114,14 @@ impl<'a> PlanBuilder<'a> {
                 OperationType::Query => Ok(ctx.build_root_selection_set(
                     QueryRootGroup::default(),
                     operation_definition.node.ty,
+                    &operation_definition.node.variable_definitions,
                     root_type,
                     &operation_definition.node.selection_set.node,
                 )),
                 OperationType::Mutation => Ok(ctx.build_root_selection_set(
                     MutationRootGroup::default(),
                     operation_definition.node.ty,
+                    &operation_definition.node.variable_definitions,
                     root_type,
                     &operation_definition.node.selection_set.node,
                 )),
@@ -151,19 +155,22 @@ impl<'a> PlanBuilder<'a> {
                 OperationType::Query => Ok(SubscribeNode::Query(ctx.build_root_selection_set(
                     QueryRootGroup::default(),
                     operation_definition.node.ty,
+                    &operation_definition.node.variable_definitions,
                     root_type,
                     &operation_definition.node.selection_set.node,
                 ))),
                 OperationType::Mutation => Ok(SubscribeNode::Query(ctx.build_root_selection_set(
                     MutationRootGroup::default(),
                     operation_definition.node.ty,
+                    &operation_definition.node.variable_definitions,
                     root_type,
                     &operation_definition.node.selection_set.node,
                 ))),
-                OperationType::Subscription => {
-                    Ok(ctx
-                        .build_subscribe(root_type, &operation_definition.node.selection_set.node))
-                }
+                OperationType::Subscription => Ok(ctx.build_subscribe(
+                    &operation_definition.node.variable_definitions,
+                    root_type,
+                    &operation_definition.node.selection_set.node,
+                )),
             }
         } else {
             unreachable!("The query validator should find this error.")
@@ -176,6 +183,7 @@ impl<'a> Context<'a> {
         &mut self,
         mut root_group: impl RootGroup<'a>,
         operation_type: OperationType,
+        variable_definitions: &'a [Positioned<VariableDefinition>],
         parent_type: &'a MetaType,
         selection_set: &'a SelectionSet,
     ) -> PlanNode<'a> {
@@ -267,9 +275,16 @@ impl<'a> Context<'a> {
         let fetch_node = {
             let mut nodes = Vec::new();
             for (service, selection_set) in root_group.into_selection_set() {
+                let (variables, variable_definitions) =
+                    referenced_variables(&selection_set, self.variables, variable_definitions);
                 nodes.push(PlanNode::Fetch(FetchNode {
                     service,
-                    query: selection_set.to_query(Some(operation_type), self.variables),
+                    variables,
+                    selection_set: FetchSelectionSet {
+                        operation_type,
+                        variable_definitions,
+                        selection_set,
+                    },
                 }));
             }
             PlanNode::Parallel(ParallelNode { nodes }).flatten()
@@ -304,17 +319,21 @@ impl<'a> Context<'a> {
                     );
                 }
 
-                let query = format!(
-                    "query($representations:[_Any!]!) {{ _entities(representations:$representations) {{ ... on {} {} }} }}",
-                    parent_type.name,
-                    selection_ref_set.to_query(None, self.variables)
-                );
+                let (variables, variable_definitions) =
+                    referenced_variables(&selection_ref_set, self.variables, variable_definitions);
                 flatten_nodes.push(PlanNode::Flatten(FlattenNode {
                     path,
                     prefix,
-                    service,
                     parent_type: parent_type.name.as_str(),
-                    query,
+                    fetch: FetchNode {
+                        service,
+                        variables,
+                        selection_set: FetchSelectionSet {
+                            operation_type: OperationType::Subscription,
+                            variable_definitions,
+                            selection_set: selection_ref_set,
+                        },
+                    },
                 }));
             }
 
@@ -332,6 +351,7 @@ impl<'a> Context<'a> {
 
     fn build_subscribe(
         &mut self,
+        variable_definitions: &'a [Positioned<VariableDefinition>],
         parent_type: &'a MetaType,
         selection_set: &'a SelectionSet,
     ) -> SubscribeNode<'a> {
@@ -363,11 +383,17 @@ impl<'a> Context<'a> {
 
         let fetch_nodes = {
             let mut nodes = Vec::new();
-            for (service, selection_set) in root_group.into_selection_set() {
+            for (service, selection_ref_set) in root_group.into_selection_set() {
+                let (variables, variable_definitions) =
+                    referenced_variables(&selection_ref_set, self.variables, variable_definitions);
                 nodes.push(FetchNode {
                     service,
-                    query: selection_set
-                        .to_query(Some(OperationType::Subscription), self.variables),
+                    variables,
+                    selection_set: FetchSelectionSet {
+                        operation_type: OperationType::Subscription,
+                        variable_definitions,
+                        selection_set: selection_ref_set,
+                    },
                 });
             }
             nodes
@@ -402,17 +428,21 @@ impl<'a> Context<'a> {
                     );
                 }
 
-                let query = format!(
-                    "query($representations:[_Any!]!) {{ _entities(representations:$representations) {{ ... on {} {} }} }}",
-                    parent_type.name,
-                    selection_ref_set.to_query(None, self.variables)
-                );
+                let (variables, variable_definitions) =
+                    referenced_variables(&selection_ref_set, self.variables, variable_definitions);
                 flatten_nodes.push(PlanNode::Flatten(FlattenNode {
                     path,
                     prefix,
-                    service,
                     parent_type: parent_type.name.as_str(),
-                    query,
+                    fetch: FetchNode {
+                        service,
+                        variables,
+                        selection_set: FetchSelectionSet {
+                            operation_type: OperationType::Query,
+                            variable_definitions,
+                            selection_set: selection_ref_set,
+                        },
+                    },
                 }));
             }
 
@@ -979,4 +1009,66 @@ fn get_operation<'a>(
         }
     };
     operation.expect("The query validator should find this error.")
+}
+
+fn referenced_variables<'a>(
+    selection_set: &SelectionRefSet<'a>,
+    variables: &'a Variables,
+    variable_definitions: &'a [Positioned<VariableDefinition>],
+) -> (VariablesRef<'a>, VariableDefinitionRef<'a>) {
+    fn referenced_variables_rec<'a>(
+        selection_set: &SelectionRefSet<'a>,
+        variables: &'a Variables,
+        variable_definitions: &'a [Positioned<VariableDefinition>],
+        variables_ref: &mut VariablesRef<'a>,
+        variables_definition_ref: &mut HashMap<&'a str, &'a VariableDefinition>,
+    ) {
+        for selection in &selection_set.0 {
+            match selection {
+                SelectionRef::FieldRef(field) => {
+                    for (_, value) in &field.field.arguments {
+                        for name in crate::utils::referenced_variables(&value.node) {
+                            if let Some((value, definition)) = variables.get(name).zip(
+                                variable_definitions
+                                    .iter()
+                                    .find(|d| d.node.name.node.as_str() == name),
+                            ) {
+                                variables_ref.variables.insert(name, value);
+                                variables_definition_ref.insert(name, &definition.node);
+                            }
+                        }
+                    }
+                }
+                SelectionRef::InlineFragment { selection_set, .. } => {
+                    referenced_variables_rec(
+                        selection_set,
+                        variables,
+                        variable_definitions,
+                        variables_ref,
+                        variables_definition_ref,
+                    );
+                }
+                _ => {}
+            }
+        }
+    }
+
+    let mut variables_ref = VariablesRef::default();
+    let mut variable_definition_ref = HashMap::new();
+    referenced_variables_rec(
+        selection_set,
+        variables,
+        variable_definitions,
+        &mut variables_ref,
+        &mut variable_definition_ref,
+    );
+    (
+        variables_ref,
+        VariableDefinitionRef {
+            variables: variable_definition_ref
+                .into_iter()
+                .map(|(_, value)| value)
+                .collect(),
+        },
+    )
 }

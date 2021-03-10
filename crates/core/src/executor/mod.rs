@@ -50,8 +50,11 @@ impl<'e, T: Coordinator> Executor<'e, T> {
             } => {
                 let mut stream =
                     match futures_util::future::try_join_all(fetch_nodes.iter().map(|node| {
-                        self.coordinator
-                            .subscribe(node.service, Request::new(&node.query))
+                        self.coordinator.subscribe(
+                            node.service,
+                            Request::new(node.selection_set.to_string())
+                                .variables(node.variables.to_variables()),
+                        )
                     }))
                     .await
                     {
@@ -122,10 +125,9 @@ impl<'e, T: Coordinator> Executor<'e, T> {
 
     #[instrument(skip(self), level = "debug")]
     async fn execute_fetch_node(&self, fetch: &FetchNode<'_>) {
-        let res = self
-            .coordinator
-            .query(fetch.service, Request::new(&fetch.query))
-            .await;
+        let request = fetch.to_request();
+        tracing::debug!(service = fetch.service, request = ?request, "Query");
+        let res = self.coordinator.query(fetch.service, request).await;
         let mut current_resp = self.resp.lock();
 
         match res {
@@ -293,13 +295,9 @@ impl<'e, T: Coordinator> Executor<'e, T> {
             variables
         };
 
-        let res = self
-            .coordinator
-            .query(
-                flatten.service,
-                Request::new(&flatten.query).variables(representations),
-            )
-            .await;
+        let request = flatten.to_request(representations);
+        tracing::debug!(service = flatten.fetch.service, request = ?request, "Query");
+        let res = self.coordinator.query(flatten.fetch.service, request).await;
         let current_resp = &mut self.resp.lock();
 
         match res {

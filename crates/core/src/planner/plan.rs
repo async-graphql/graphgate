@@ -2,9 +2,11 @@ use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
 use std::ops::{Deref, DerefMut};
 
 use indexmap::IndexMap;
-use value::Name;
+use value::{Name, Variables};
 
+use crate::planner::types::{FetchSelectionSet, VariablesRef};
 use crate::schema::ConstValue;
+use crate::Request;
 
 #[derive(Debug)]
 pub enum PlanNode<'a> {
@@ -110,16 +112,52 @@ pub struct IntrospectionNode {
 #[derive(Debug)]
 pub struct FetchNode<'a> {
     pub service: &'a str,
-    pub query: String,
+    pub variables: VariablesRef<'a>,
+    pub selection_set: FetchSelectionSet<'a>,
+}
+
+impl<'a> FetchNode<'a> {
+    pub fn to_request(&self) -> Request {
+        Request::new(self.selection_set.to_string()).variables(self.variables.to_variables())
+    }
 }
 
 #[derive(Debug)]
 pub struct FlattenNode<'a> {
     pub path: ResponsePath<'a>,
     pub prefix: usize,
-    pub service: &'a str,
     pub parent_type: &'a str,
-    pub query: String,
+    pub fetch: FetchNode<'a>,
+}
+
+impl<'a> FlattenNode<'a> {
+    pub fn to_request(&self, representations: Variables) -> Request {
+        let query = format!(
+            r#"
+        query($representations:[_Any!]!{}{}) {{
+            _entities(representations:$representations) {{
+                ... on {} {}
+            }}
+        }}"#,
+            if self
+                .fetch
+                .selection_set
+                .variable_definitions
+                .variables
+                .is_empty()
+            {
+                ""
+            } else {
+                ","
+            },
+            self.fetch.selection_set.variable_definitions,
+            self.parent_type,
+            self.fetch.selection_set.selection_set
+        );
+        Request::new(query)
+            .variables(representations)
+            .extend_variables(self.fetch.variables.to_variables())
+    }
 }
 
 #[derive(Debug)]

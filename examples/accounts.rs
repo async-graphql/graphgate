@@ -23,6 +23,10 @@ impl Query {
         }
     }
 
+    async fn user(&self, id: ID, username: String) -> User {
+        User { id, username }
+    }
+
     #[graphql(entity)]
     async fn find_user_by_id(&self, id: ID) -> User {
         let username = if id == "1234" {

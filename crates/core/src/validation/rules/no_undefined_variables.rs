@@ -6,7 +6,8 @@ use parser::types::{
 use parser::{Pos, Positioned};
 use value::{Name, Value};
 
-use crate::validation::utils::{referenced_variables, Scope};
+use crate::utils::referenced_variables;
+use crate::validation::utils::Scope;
 use crate::validation::{Visitor, VisitorContext};
 
 #[derive(Default)]

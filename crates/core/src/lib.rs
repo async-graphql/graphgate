@@ -3,6 +3,7 @@ mod planner;
 mod request;
 mod response;
 mod schema;
+mod utils;
 mod validation;
 
 pub use executor::{Coordinator, Executor};
