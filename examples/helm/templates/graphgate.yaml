@@ -31,6 +31,8 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: graphgate
+  annotations:
+    rollme: {{ randAlphaNum 5 | quote }}
 spec:
   replicas: 1
   selector:

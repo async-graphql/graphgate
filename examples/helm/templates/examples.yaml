@@ -4,6 +4,8 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: {{ .name }}
+  annotations:
+    rollme: {{ randAlphaNum 5 | quote }}
 spec:
   replicas: {{ $.Values.replicas }}
   selector:
