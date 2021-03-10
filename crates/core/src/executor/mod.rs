@@ -52,7 +52,7 @@ impl<'e, T: Coordinator> Executor<'e, T> {
                     match futures_util::future::try_join_all(fetch_nodes.iter().map(|node| {
                         self.coordinator.subscribe(
                             node.service,
-                            Request::new(node.selection_set.to_string())
+                            Request::new(node.query.to_string())
                                 .variables(node.variables.to_variables()),
                         )
                     }))
@@ -76,8 +76,10 @@ impl<'e, T: Coordinator> Executor<'e, T> {
                 Box::pin(async_stream::stream! {
                     while let Some(response) = stream.next().await {
                         *self.resp.lock() = response;
-                        self.execute_node(query_nodes).await;
-                        yield std::mem::take(&mut *self.resp.lock());
+                        if let Some(query_nodes) = query_nodes {
+                            self.execute_node(query_nodes).await;
+                            yield std::mem::take(&mut *self.resp.lock());
+                        }
                     }
                 })
             }
@@ -296,8 +298,8 @@ impl<'e, T: Coordinator> Executor<'e, T> {
         };
 
         let request = flatten.to_request(representations);
-        tracing::debug!(service = flatten.fetch.service, request = ?request, "Query");
-        let res = self.coordinator.query(flatten.fetch.service, request).await;
+        tracing::debug!(service = flatten.service, request = ?request, "Query");
+        let res = self.coordinator.query(flatten.service, request).await;
         let current_resp = &mut self.resp.lock();
 
         match res {

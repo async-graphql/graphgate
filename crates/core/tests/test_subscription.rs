@@ -15,6 +15,6 @@ fn test_subscription() {
     "#;
     let doc = parser::parse_query(query).unwrap();
     let builder = PlanBuilder::new(&schema, doc);
-    let plan = builder.plan_subscribe().unwrap();
-    println!("{:#?}", plan);
+    let plan = serde_json::to_string_pretty(&builder.plan_subscribe().unwrap()).unwrap();
+    println!("{}", plan);
 }

@@ -2,13 +2,15 @@ use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
 use std::ops::{Deref, DerefMut};
 
 use indexmap::IndexMap;
+use serde::{Serialize, Serializer};
 use value::{Name, Variables};
 
-use crate::planner::types::{FetchSelectionSet, VariablesRef};
+use crate::planner::types::{FetchQuery, VariablesRef};
 use crate::schema::ConstValue;
 use crate::Request;
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
+#[serde(tag = "type", rename_all = "lowercase")]
 pub enum PlanNode<'a> {
     Sequence(SequenceNode<'a>),
     Parallel(ParallelNode<'a>),
@@ -62,6 +64,15 @@ impl<'a> Display for ResponsePath<'a> {
     }
 }
 
+impl<'a> Serialize for ResponsePath<'a> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(&self.to_string())
+    }
+}
+
 impl<'a> Deref for ResponsePath<'a> {
     type Target = Vec<PathSegment<'a>>;
 
@@ -76,95 +87,92 @@ impl<'a> DerefMut for ResponsePath<'a> {
     }
 }
 
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Serialize)]
 pub struct SequenceNode<'a> {
     pub nodes: Vec<PlanNode<'a>>,
 }
 
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Serialize)]
 pub struct ParallelNode<'a> {
     pub nodes: Vec<PlanNode<'a>>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct IntrospectionDirective {
     pub name: Name,
+
+    #[serde(skip_serializing_if = "IndexMap::is_empty")]
     pub arguments: IndexMap<Name, ConstValue>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct IntrospectionField {
     pub name: Name,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub alias: Option<Name>,
+
+    #[serde(skip_serializing_if = "IndexMap::is_empty")]
     pub arguments: IndexMap<Name, ConstValue>,
+
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub directives: Vec<IntrospectionDirective>,
+
     pub selection_set: IntrospectionSelectionSet,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Serialize)]
+#[serde(transparent)]
 pub struct IntrospectionSelectionSet(pub Vec<IntrospectionField>);
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
+#[serde(transparent)]
 pub struct IntrospectionNode {
     pub selection_set: IntrospectionSelectionSet,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct FetchNode<'a> {
     pub service: &'a str,
+    #[serde(skip_serializing_if = "VariablesRef::is_empty")]
     pub variables: VariablesRef<'a>,
-    pub selection_set: FetchSelectionSet<'a>,
+    pub query: FetchQuery<'a>,
 }
 
 impl<'a> FetchNode<'a> {
     pub fn to_request(&self) -> Request {
-        Request::new(self.selection_set.to_string()).variables(self.variables.to_variables())
+        Request::new(self.query.to_string()).variables(self.variables.to_variables())
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct FlattenNode<'a> {
     pub path: ResponsePath<'a>,
     pub prefix: usize,
-    pub parent_type: &'a str,
-    pub fetch: FetchNode<'a>,
+    pub service: &'a str,
+    #[serde(skip_serializing_if = "VariablesRef::is_empty")]
+    pub variables: VariablesRef<'a>,
+    pub query: FetchQuery<'a>,
 }
 
 impl<'a> FlattenNode<'a> {
     pub fn to_request(&self, representations: Variables) -> Request {
-        let query = format!(
-            r#"
-        query($representations:[_Any!]!{}{}) {{
-            _entities(representations:$representations) {{
-                ... on {} {}
-            }}
-        }}"#,
-            if self
-                .fetch
-                .selection_set
-                .variable_definitions
-                .variables
-                .is_empty()
-            {
-                ""
-            } else {
-                ","
-            },
-            self.fetch.selection_set.variable_definitions,
-            self.parent_type,
-            self.fetch.selection_set.selection_set
-        );
-        Request::new(query)
+        Request::new(self.query.to_string())
             .variables(representations)
-            .extend_variables(self.fetch.variables.to_variables())
+            .extend_variables(self.variables.to_variables())
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
+#[serde(tag = "type", rename_all = "lowercase")]
 pub enum SubscribeNode<'a> {
+    #[serde(rename_all = "camelCase")]
     Subscribe {
         fetch_nodes: Vec<FetchNode<'a>>,
-        query_nodes: PlanNode<'a>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        query_nodes: Option<PlanNode<'a>>,
     },
     Query(PlanNode<'a>),
 }

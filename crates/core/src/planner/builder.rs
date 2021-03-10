@@ -20,7 +20,7 @@ use super::types::{
     SelectionRefSet,
 };
 use crate::planner::types::{
-    FetchSelectionSet, MutationRootGroup, QueryRootGroup, VariableDefinitionRef, VariablesRef,
+    FetchQuery, MutationRootGroup, QueryRootGroup, VariableDefinitionsRef, VariablesRef,
 };
 use crate::schema::{ComposedSchema, KeyFields, MetaField, MetaType, TypeKind};
 use crate::validation::check_rules;
@@ -280,7 +280,8 @@ impl<'a> Context<'a> {
                 nodes.push(PlanNode::Fetch(FetchNode {
                     service,
                     variables,
-                    selection_set: FetchSelectionSet {
+                    query: FetchQuery {
+                        entity_type: None,
                         operation_type,
                         variable_definitions,
                         selection_set,
@@ -324,15 +325,13 @@ impl<'a> Context<'a> {
                 flatten_nodes.push(PlanNode::Flatten(FlattenNode {
                     path,
                     prefix,
-                    parent_type: parent_type.name.as_str(),
-                    fetch: FetchNode {
-                        service,
-                        variables,
-                        selection_set: FetchSelectionSet {
-                            operation_type: OperationType::Subscription,
-                            variable_definitions,
-                            selection_set: selection_ref_set,
-                        },
+                    service,
+                    variables,
+                    query: FetchQuery {
+                        entity_type: Some(parent_type.name.as_str()),
+                        operation_type: OperationType::Subscription,
+                        variable_definitions,
+                        selection_set: selection_ref_set,
                     },
                 }));
             }
@@ -389,7 +388,8 @@ impl<'a> Context<'a> {
                 nodes.push(FetchNode {
                     service,
                     variables,
-                    selection_set: FetchSelectionSet {
+                    query: FetchQuery {
+                        entity_type: None,
                         operation_type: OperationType::Subscription,
                         variable_definitions,
                         selection_set: selection_ref_set,
@@ -433,15 +433,13 @@ impl<'a> Context<'a> {
                 flatten_nodes.push(PlanNode::Flatten(FlattenNode {
                     path,
                     prefix,
-                    parent_type: parent_type.name.as_str(),
-                    fetch: FetchNode {
-                        service,
-                        variables,
-                        selection_set: FetchSelectionSet {
-                            operation_type: OperationType::Query,
-                            variable_definitions,
-                            selection_set: selection_ref_set,
-                        },
+                    service,
+                    variables,
+                    query: FetchQuery {
+                        entity_type: Some(parent_type.name.as_str()),
+                        operation_type: OperationType::Query,
+                        variable_definitions,
+                        selection_set: selection_ref_set,
                     },
                 }));
             }
@@ -457,7 +455,11 @@ impl<'a> Context<'a> {
 
         SubscribeNode::Subscribe {
             fetch_nodes,
-            query_nodes: PlanNode::Sequence(SequenceNode { nodes: query_nodes }),
+            query_nodes: if query_nodes.is_empty() {
+                None
+            } else {
+                Some(PlanNode::Sequence(SequenceNode { nodes: query_nodes }))
+            },
         }
     }
 
@@ -1015,7 +1017,7 @@ fn referenced_variables<'a>(
     selection_set: &SelectionRefSet<'a>,
     variables: &'a Variables,
     variable_definitions: &'a [Positioned<VariableDefinition>],
-) -> (VariablesRef<'a>, VariableDefinitionRef<'a>) {
+) -> (VariablesRef<'a>, VariableDefinitionsRef<'a>) {
     fn referenced_variables_rec<'a>(
         selection_set: &SelectionRefSet<'a>,
         variables: &'a Variables,
@@ -1064,7 +1066,7 @@ fn referenced_variables<'a>(
     );
     (
         variables_ref,
-        VariableDefinitionRef {
+        VariableDefinitionsRef {
             variables: variable_definition_ref
                 .into_iter()
                 .map(|(_, value)| value)

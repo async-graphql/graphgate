@@ -4,10 +4,12 @@ use std::fmt::{Display, Formatter, Result as FmtResult};
 use indexmap::IndexMap;
 use parser::types::{Directive, Field, OperationType, VariableDefinition};
 use parser::Positioned;
+use serde::{Serialize, Serializer};
 use value::{Name, Value, Variables};
 
 use super::plan::ResponsePath;
 use crate::schema::{ConstValue, KeyFields, MetaType};
+use serde::ser::{SerializeSeq, SerializeStruct};
 
 #[derive(Debug)]
 pub struct FieldRef<'a> {
@@ -36,6 +38,15 @@ pub enum SelectionRef<'a> {
 #[derive(Default, Debug)]
 pub struct SelectionRefSet<'a>(pub Vec<SelectionRef<'a>>);
 
+impl<'a> Serialize for SelectionRefSet<'a> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(&self.to_string())
+    }
+}
+
 impl<'a> Display for SelectionRefSet<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         stringify_selection_ref_set_rec(f, self)
@@ -43,20 +54,47 @@ impl<'a> Display for SelectionRefSet<'a> {
 }
 
 #[derive(Debug)]
-pub struct FetchSelectionSet<'a> {
+pub struct FetchQuery<'a> {
+    pub entity_type: Option<&'a str>,
     pub operation_type: OperationType,
-    pub variable_definitions: VariableDefinitionRef<'a>,
+    pub variable_definitions: VariableDefinitionsRef<'a>,
     pub selection_set: SelectionRefSet<'a>,
 }
 
-impl<'a> Display for FetchSelectionSet<'a> {
+impl<'a> Display for FetchQuery<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
-        write!(f, "{}", self.operation_type)?;
-        if !self.variable_definitions.variables.is_empty() {
-            write!(f, "({})", self.variable_definitions)?;
+        match self.entity_type {
+            Some(entity_type) => {
+                write!(
+                    f,
+                    "query($representations:[_Any!]!{}{}) {{ _entities(representations:$representations) {{ ... on {} {} }} }}",
+                    if self.variable_definitions.variables.is_empty() {
+                        ""
+                    } else {
+                        ", "
+                    },
+                    self.variable_definitions,
+                    entity_type,
+                    self.selection_set
+                )
+            }
+            None => {
+                write!(f, "{}", self.operation_type)?;
+                if !self.variable_definitions.variables.is_empty() {
+                    write!(f, "({})", self.variable_definitions)?;
+                }
+                write!(f, " {}", self.selection_set)
+            }
         }
-        write!(f, " {}", self.selection_set)?;
-        Ok(())
+    }
+}
+
+impl<'a> Serialize for FetchQuery<'a> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(&self.to_string())
     }
 }
 
@@ -153,7 +191,7 @@ fn stringify_selection_ref_set_rec(
             SelectionRef::RequiredRef(require_ref) => {
                 write!(
                     f,
-                    " ... {{ __key{}___typename:__typename ",
+                    "... {{ __key{}___typename:__typename ",
                     require_ref.prefix,
                 )?;
                 stringify_key_fields(f, require_ref.prefix, &require_ref.fields)?;
@@ -235,11 +273,48 @@ pub struct FetchEntityKey<'a> {
 pub type FetchEntityGroup<'a> = IndexMap<FetchEntityKey<'a>, FetchEntity<'a>>;
 
 #[derive(Debug, Default)]
-pub struct VariableDefinitionRef<'a> {
+pub struct VariableDefinitionsRef<'a> {
     pub variables: Vec<&'a VariableDefinition>,
 }
 
-impl<'a> Display for VariableDefinitionRef<'a> {
+impl<'a> VariableDefinitionsRef<'a> {
+    pub fn is_empty(&self) -> bool {
+        self.variables.is_empty()
+    }
+}
+
+impl<'a> Serialize for VariableDefinitionsRef<'a> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        struct VariableDefinitionRef<'a>(&'a VariableDefinition);
+
+        impl<'a> Serialize for VariableDefinitionRef<'a> {
+            fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+            where
+                S: Serializer,
+            {
+                let mut s = serializer.serialize_struct("VariableDefinitions", 3)?;
+                s.serialize_field("name", &self.0.name.node)?;
+                s.serialize_field("type", &self.0.var_type.node.to_string())?;
+                s.serialize_field(
+                    "defaultValue",
+                    &self.0.default_value.as_ref().map(|value| &value.node),
+                )?;
+                s.end()
+            }
+        }
+
+        let mut s = serializer.serialize_seq(None)?;
+        for item in &self.variables {
+            s.serialize_element(&VariableDefinitionRef(*item))?;
+        }
+        s.end()
+    }
+}
+
+impl<'a> Display for VariableDefinitionsRef<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         for (idx, variable_definition) in self.variables.iter().enumerate() {
             if idx > 0 {
@@ -258,12 +333,18 @@ impl<'a> Display for VariableDefinitionRef<'a> {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Serialize)]
+#[serde(transparent)]
 pub struct VariablesRef<'a> {
     pub variables: HashMap<&'a str, &'a ConstValue>,
 }
 
 impl<'a> VariablesRef<'a> {
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.variables.is_empty()
+    }
+
     pub fn to_variables(&self) -> Variables {
         let mut variables = Variables::default();
         variables.extend(
