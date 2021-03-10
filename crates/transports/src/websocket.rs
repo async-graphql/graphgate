@@ -175,7 +175,7 @@ async fn main_loop(mut rx: mpsc::UnboundedReceiver<Command>, url: String) {
                                 if let Some(tx) = subscribes.get_mut(id) {
                                     if tx.send(payload).is_err() {
                                         if let Some(sink) = &mut sink {
-                                            let msg = Message::text(serde_json::to_string(&ClientMessage::Stop { id: id }).unwrap());
+                                            let msg = Message::text(serde_json::to_string(&ClientMessage::Stop { id }).unwrap());
                                             sink.send(msg).await.ok();
                                         }
                                     }

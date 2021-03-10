@@ -190,7 +190,6 @@ pub fn graphql(
     let graphql_ws = warp::ws()
         .and(warp::header::optional::<String>("sec-websocket-protocol"))
         .map({
-            let shared_coordinator = shared_coordinator.clone();
             move |ws: Ws, protocols: Option<String>| {
                 let protocol = protocols
                     .and_then(|protocols| {

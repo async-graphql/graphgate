@@ -160,7 +160,7 @@ fn stringify_selection_ref_set_rec(
     f: &mut Formatter<'_>,
     selection_set: &SelectionRefSet<'_>,
 ) -> FmtResult {
-    write!(f, "{{")?;
+    write!(f, "{{ ")?;
     for (idx, selection) in selection_set.0.iter().enumerate() {
         if idx > 0 {
             write!(f, " ")?;
@@ -212,7 +212,7 @@ fn stringify_selection_ref_set_rec(
             }
         }
     }
-    write!(f, "}}")
+    write!(f, " }}")
 }
 
 pub trait RootGroup<'a> {
