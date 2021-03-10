@@ -13,3 +13,7 @@ GraphGate 是一个用 Rust 语言实现的 [Apollo Federation](https://www.apol
 # 为什么要用 Rust 实现它？
 
 Rust是我最喜欢的编程语言，它安全并且快速，非常适合用于开发API网关这样的基础服务。
+
+# GraphGate和Apollo Federation的主要区别是什么？
+
+我猜GraphGate的性能会好很多（我还没有做基准测试，但很快会加上），并且支持订阅。

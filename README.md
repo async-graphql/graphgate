@@ -14,3 +14,7 @@ Unlike other distributed GraphQL architectures (such as schema stitching), Apoll
 
 Rust is my favorite programming language. It is safe and fast, and is very suitable for developing API gateway.
 
+# What is the difference between GraphGate and Apollo Federaion?
+
+I guess the performance of GraphGate will be much better (I haven't done benchmarking yet, but will add it soon), and it supports subscription.
+
