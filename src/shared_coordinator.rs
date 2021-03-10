@@ -10,6 +10,7 @@ use graphgate_transports::CoordinatorImpl;
 use serde::Deserialize;
 use tokio::sync::{mpsc, Mutex};
 use tokio::time::Duration;
+use value::ConstValue;
 use warp::http::{Response as HttpResponse, StatusCode};
 
 enum Command {
@@ -129,16 +130,6 @@ impl SharedCoordinator {
             (inner.schema.clone(), inner.coordinator.clone())
         };
 
-        let (composed_schema, coordinator) = match (composed_schema, coordinator) {
-            (Some(composed_schema), Some(coordinator)) => (composed_schema, coordinator),
-            _ => {
-                return HttpResponse::builder()
-                    .status(StatusCode::BAD_REQUEST)
-                    .body("Not ready.".to_string())
-                    .unwrap()
-            }
-        };
-
         let document = match parser::parse_query(request.query) {
             Ok(document) => document,
             Err(err) => {
@@ -148,6 +139,26 @@ impl SharedCoordinator {
                     .unwrap();
             }
         };
+
+        let (composed_schema, coordinator) = match (composed_schema, coordinator) {
+            (Some(composed_schema), Some(coordinator)) => (composed_schema, coordinator),
+            _ => {
+                return HttpResponse::builder()
+                    .status(StatusCode::BAD_REQUEST)
+                    .body(
+                        serde_json::to_string(&Response {
+                            data: ConstValue::Null,
+                            errors: vec![ServerError {
+                                message: "Not ready.".to_string(),
+                                locations: Default::default(),
+                            }],
+                        })
+                        .unwrap(),
+                    )
+                    .unwrap()
+            }
+        };
+
         let mut plan_builder =
             PlanBuilder::new(&composed_schema, document).variables(request.variables);
         if let Some(operation) = request.operation {

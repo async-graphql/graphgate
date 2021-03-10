@@ -50,7 +50,7 @@ pub async fn find_graphql_services() -> Result<HashMap<String, String>> {
                 .flatten()
                 .flatten()
             {
-                if let Some(protocol) = &service_port.protocol {
+                if let Some(protocol) = &service_port.name {
                     graphql_services.insert(
                         service_name.to_string(),
                         format!("{}://{}:{}", protocol, host, service_port.port),
