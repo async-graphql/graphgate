@@ -54,4 +54,6 @@ jobs:
         uses: WyriHaximus/github-action-helm3@v2
         with:
           kubeconfig: '${{ secrets.K8S_CONFIG }}'
-          exec: helm upgrade --create-namespace -i -n graphgate graphgate examples/helm
+          exec: |
+            helm uninstall -n graphgate graphgate
+            helm upgrade --create-namespace -i -n graphgate graphgate examples/helm

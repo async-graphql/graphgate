@@ -37,8 +37,8 @@ metadata:
 spec:
   ports:
     - name: {{ .protocol }}
-      port: {{ .port }}
-      targetPort: 8000
+      port: 8000
+      targetPort: {{ .port }}
   selector:
     app: {{ .name }}
 {{- end }}
