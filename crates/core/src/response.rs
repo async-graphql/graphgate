@@ -17,6 +17,15 @@ pub struct ServerError {
     pub locations: Vec<Pos>,
 }
 
+impl ServerError {
+    pub fn new(message: impl Into<String>) -> Self {
+        Self {
+            message: message.into(),
+            locations: Default::default(),
+        }
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize, Default)]
 pub struct Response {
     pub data: ConstValue,

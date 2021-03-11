@@ -1,10 +1,20 @@
-use std::collections::BTreeMap;
+mod introspection;
+mod websocket;
+
+use std::collections::{BTreeMap, HashMap};
 
 use futures_util::future::BoxFuture;
 use futures_util::stream::BoxStream;
+use futures_util::StreamExt;
 use spin::Mutex;
+use tokio::sync::mpsc;
 use tracing::instrument;
 use value::{ConstValue, Name, Variables};
+use warp::http::HeaderMap;
+
+use introspection::{IntrospectionRoot, Resolver};
+use websocket::WebSocketController;
+pub use websocket::{server, Protocols};
 
 use crate::planner::{
     FetchNode, FlattenNode, IntrospectionNode, ParallelNode, PathSegment, PlanNode, SequenceNode,
@@ -12,25 +22,36 @@ use crate::planner::{
 };
 use crate::{ComposedSchema, Request, Response, ServerError};
 
-pub use coordinator::Coordinator;
-use futures_util::StreamExt;
-use introspection::{IntrospectionRoot, Resolver};
-
-mod coordinator;
-mod introspection;
-
-pub struct Executor<'e, T> {
-    schema: &'e ComposedSchema,
-    resp: Mutex<Response>,
-    coordinator: &'e T,
+#[derive(Clone, Eq, PartialEq, Debug)]
+pub struct ServiceRoute {
+    pub addr: String,
+    pub query_path: Option<String>,
+    pub subscribe_path: Option<String>,
 }
 
-impl<'e, T: Coordinator> Executor<'e, T> {
-    pub fn new(schema: &'e ComposedSchema, coordinator: &'e T) -> Self {
+pub type ServiceRouteTable = HashMap<String, ServiceRoute>;
+
+pub struct Executor<'e> {
+    schema: &'e ComposedSchema,
+    route_table: &'e ServiceRouteTable,
+    headers_map: Option<&'e HeaderMap>,
+    resp: Mutex<Response>,
+}
+
+impl<'e> Executor<'e> {
+    pub fn new(schema: &'e ComposedSchema, route_table: &'e ServiceRouteTable) -> Self {
         Executor {
             schema,
+            route_table,
+            headers_map: None,
             resp: Mutex::new(Response::default()),
-            coordinator,
+        }
+    }
+
+    pub fn with_headers(self, headers_map: &'e HeaderMap) -> Self {
+        Self {
+            headers_map: Some(headers_map),
+            ..self
         }
     }
 
@@ -39,7 +60,12 @@ impl<'e, T: Coordinator> Executor<'e, T> {
         self.resp.into_inner()
     }
 
-    pub async fn execute_stream<'a>(self, node: &'a SubscribeNode<'e>) -> BoxStream<'a, Response> {
+    pub async fn execute_stream<'a>(
+        self,
+        ws_controller: WebSocketController,
+        id: &str,
+        node: &'a SubscribeNode<'e>,
+    ) -> BoxStream<'a, Response> {
         match node {
             SubscribeNode::Query(node) => Box::pin(async_stream::stream! {
                 yield self.execute(node).await
@@ -48,37 +74,40 @@ impl<'e, T: Coordinator> Executor<'e, T> {
                 fetch_nodes,
                 query_nodes,
             } => {
-                let mut stream =
-                    match futures_util::future::try_join_all(fetch_nodes.iter().map(|node| {
-                        self.coordinator.subscribe(
+                let (tx, mut rx) = mpsc::unbounded_channel();
+                if let Err(err) =
+                    futures_util::future::try_join_all(fetch_nodes.iter().map(|node| {
+                        ws_controller.subscribe(
+                            id,
                             node.service,
                             Request::new(node.query.to_string())
                                 .variables(node.variables.to_variables()),
+                            tx.clone(),
                         )
                     }))
                     .await
-                    {
-                        Ok(streams) => futures_util::stream::select_all(streams),
-                        Err(err) => {
-                            return futures_util::stream::once(async move {
-                                Response {
-                                    data: ConstValue::Null,
-                                    errors: vec![ServerError {
-                                        message: err.to_string(),
-                                        locations: Default::default(),
-                                    }],
-                                }
-                            })
-                            .boxed();
+                {
+                    ws_controller.stop(id).await;
+                    return futures_util::stream::once(async move {
+                        Response {
+                            data: ConstValue::Null,
+                            errors: vec![ServerError {
+                                message: err.to_string(),
+                                locations: Default::default(),
+                            }],
                         }
-                    };
+                    })
+                    .boxed();
+                }
 
                 Box::pin(async_stream::stream! {
-                    while let Some(response) = stream.next().await {
-                        *self.resp.lock() = response;
+                    while let Some(response) = rx.recv().await {
                         if let Some(query_nodes) = query_nodes {
+                            *self.resp.lock() = response;
                             self.execute_node(query_nodes).await;
                             yield std::mem::take(&mut *self.resp.lock());
+                        } else {
+                            yield response;
                         }
                     }
                 })
@@ -129,7 +158,7 @@ impl<'e, T: Coordinator> Executor<'e, T> {
     async fn execute_fetch_node(&self, fetch: &FetchNode<'_>) {
         let request = fetch.to_request();
         tracing::debug!(service = fetch.service, request = ?request, "Query");
-        let res = self.coordinator.query(fetch.service, request).await;
+        let res = query(self.route_table, fetch.service, request, self.headers_map).await;
         let mut current_resp = self.resp.lock();
 
         match res {
@@ -299,7 +328,7 @@ impl<'e, T: Coordinator> Executor<'e, T> {
 
         let request = flatten.to_request(representations);
         tracing::debug!(service = flatten.service, request = ?request, "Query");
-        let res = self.coordinator.query(flatten.service, request).await;
+        let res = query(self.route_table, flatten.service, request, self.headers_map).await;
         let current_resp = &mut self.resp.lock();
 
         match res {
@@ -361,4 +390,30 @@ fn merge_errors(target: &mut Vec<ServerError>, errors: Vec<ServerError>) {
             locations: Default::default(),
         })
     }
+}
+
+pub async fn query(
+    route_table: &ServiceRouteTable,
+    service: &str,
+    request: Request,
+    header_map: Option<&HeaderMap>,
+) -> anyhow::Result<Response> {
+    let route = route_table.get(service).ok_or_else(|| {
+        anyhow::anyhow!("Service '{}' is not defined in the routing table.", service)
+    })?;
+    let url = match &route.query_path {
+        Some(path) => format!("http://{}{}", route.addr, path),
+        None => format!("http://{}", route.addr),
+    };
+    let client = reqwest::Client::new();
+    let resp = client
+        .post(&url)
+        .headers(header_map.cloned().unwrap_or_default())
+        .json(&request)
+        .send()
+        .await?
+        .error_for_status()?
+        .json::<Response>()
+        .await?;
+    Ok(resp)
 }

@@ -172,7 +172,6 @@ pub struct ComposedSchema {
     pub(crate) subscription_type: Option<Name>,
     pub(crate) types: HashMap<Name, MetaType>,
     pub(crate) directives: HashMap<Name, MetaDirective>,
-    pub services: IndexMap<String, String>,
 }
 
 impl ComposedSchema {
@@ -422,18 +421,6 @@ fn convert_schema_definition(
     composed_schema.query_type = schema_definition.query.map(|name| name.node);
     composed_schema.mutation_type = schema_definition.mutation.map(|name| name.node);
     composed_schema.subscription_type = schema_definition.subscription.map(|name| name.node);
-
-    for directive in schema_definition.directives {
-        if directive.node.name.node.as_str() == "service" {
-            if let Some((name, url)) = get_argument_str(&directive.node.arguments, "name")
-                .zip(get_argument_str(&directive.node.arguments, "url"))
-            {
-                composed_schema
-                    .services
-                    .insert(name.node.to_string(), url.node.to_string());
-            }
-        }
-    }
 }
 
 fn convert_type_definition(definition: TypeDefinition) -> MetaType {

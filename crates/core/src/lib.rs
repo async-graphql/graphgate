@@ -6,7 +6,10 @@ mod schema;
 mod utils;
 mod validation;
 
-pub use executor::{Coordinator, Executor};
+pub use executor::{
+    query, server as websocket_server, Executor, Protocols as WebSocketProtocols, ServiceRoute,
+    ServiceRouteTable,
+};
 pub use planner::PlanBuilder;
 pub use request::Request;
 pub use response::{ErrorPath, Response, ServerError};

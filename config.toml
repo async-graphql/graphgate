@@ -1,11 +1,14 @@
+bind = "0.0.0.0:8000"
+
 [[services]]
 name = "accounts"
-url = "ws://127.0.0.1:8001"
+addr = "127.0.0.1:8001"
 
 [[services]]
 name = "products"
-url = "ws://127.0.0.1:8002"
+addr = "127.0.0.1:8002"
 
 [[services]]
 name = "reviews"
-url = "ws://127.0.0.1:8003"
+addr = "127.0.0.1:8003"
+

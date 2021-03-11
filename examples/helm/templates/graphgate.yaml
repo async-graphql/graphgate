@@ -27,12 +27,17 @@ roleRef:
   name: graphql-services-view
   apiGroup: rbac.authorization.k8s.io
 ---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: graphgate-config
+data:
+  config-file: {{ .Files.Get "config.toml" | quote }}
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: graphgate
-  annotations:
-    rollme: {{ randAlphaNum 5 | quote }}
 spec:
   replicas: 1
   selector:
@@ -46,10 +51,19 @@ spec:
         app: graphgate
     spec:
       serviceAccountName: graphgate
+      volumes:
+        - name: config
+          configMap:
+            name: graphgate-config
+            items:
+              - key: config-file
+                path: /config.toml
       containers:
         - image: scott829/graphgate:latest
           imagePullPolicy: Always
           name: graphgate
+          args:
+            - /config.toml
           readinessProbe:
             httpGet:
               path: /health
@@ -61,11 +75,7 @@ spec:
               name: http
           env:
             - name: RUST_LOG
-              value: graphgate=trace
-          args:
-            - k8s
-            - --bind
-            - "0.0.0.0:{{ .Values.port }}"
+              value: graphgate=debug
 ---
 apiVersion: v1
 kind: Service

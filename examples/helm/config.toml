@@ -1,0 +1,5 @@
+# Bind address
+bind = "0.0.0.0:8000"
+
+# Forwarding headers to upstream services
+forward_headers = []

@@ -1,13 +1,13 @@
-use std::collections::HashMap;
-
 use anyhow::{Context, Result};
-use graphgate_transports::CoordinatorImpl;
+use graphgate_core::{ServiceRoute, ServiceRouteTable};
 use k8s_openapi::api::core::v1::Service;
 use kube::api::{ListParams, ObjectMeta};
 use kube::{Api, Client};
 
 const NAMESPACE_PATH: &str = "/var/run/secrets/kubernetes.io/serviceaccount/namespace";
 const LABEL_GRAPHQL_SERVICE: &str = "graphgate.org/service";
+const ANNOTATIONS_QUERY_PATH: &str = "graphgate.org/queryPath";
+const ANNOTATIONS_SUBSCRIBE_PATH: &str = "graphgate.org/subscribePath";
 
 fn get_label_value<'a>(meta: &'a ObjectMeta, name: &str) -> Option<&'a str> {
     meta.labels
@@ -17,7 +17,15 @@ fn get_label_value<'a>(meta: &'a ObjectMeta, name: &str) -> Option<&'a str> {
         .map(|(_, value)| value.as_str())
 }
 
-pub async fn find_graphql_services() -> Result<HashMap<String, String>> {
+fn get_annotation_value<'a>(meta: &'a ObjectMeta, name: &str) -> Option<&'a str> {
+    meta.annotations
+        .iter()
+        .flatten()
+        .find(|(key, _)| key.as_str() == name)
+        .map(|(_, value)| value.as_str())
+}
+
+pub async fn find_graphql_services() -> Result<ServiceRouteTable> {
     tracing::trace!("Find GraphQL services.");
     let client = Client::try_default()
         .await
@@ -27,7 +35,7 @@ pub async fn find_graphql_services() -> Result<HashMap<String, String>> {
         std::fs::read_to_string(NAMESPACE_PATH).unwrap_or_else(|_| "default".to_string());
     tracing::trace!(namespace = %namespace, "Get current namespace.");
 
-    let mut graphql_services = HashMap::new();
+    let mut route_table = ServiceRouteTable::new();
     let services_api: Api<Service> = Api::namespaced(client, &namespace);
 
     tracing::trace!("List all services.");
@@ -50,24 +58,20 @@ pub async fn find_graphql_services() -> Result<HashMap<String, String>> {
                 .flatten()
                 .flatten()
             {
-                if let Some(protocol) = &service_port.name {
-                    graphql_services.insert(
-                        service_name.to_string(),
-                        format!("{}://{}:{}", protocol, host, service_port.port),
-                    );
-                }
+                let query_path = get_annotation_value(&service.metadata, ANNOTATIONS_QUERY_PATH);
+                let subscribe_path =
+                    get_annotation_value(&service.metadata, ANNOTATIONS_SUBSCRIBE_PATH);
+                route_table.insert(
+                    service_name.to_string(),
+                    ServiceRoute {
+                        addr: format!("{}:{}", host, service_port.port),
+                        query_path: query_path.map(ToString::to_string),
+                        subscribe_path: subscribe_path.map(ToString::to_string),
+                    },
+                );
             }
         }
     }
 
-    Ok(graphql_services)
-}
-
-pub fn create_coordinator(graphql_services: &HashMap<String, String>) -> Result<CoordinatorImpl> {
-    tracing::trace!(services = ?graphql_services, "Create coordinator.");
-    let mut coordinator = CoordinatorImpl::default();
-    for (service, url) in graphql_services {
-        coordinator = coordinator.add_url(service, url)?;
-    }
-    Ok(coordinator)
+    Ok(route_table)
 }

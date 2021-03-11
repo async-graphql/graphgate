@@ -6,7 +6,6 @@ edition = "2018"
 
 [dependencies]
 graphgate-core = { version = "0.3.0", path = "./crates/core" }
-graphgate-transports = { version = "0.3.0", path = "./crates/transports" }
 
 parser = { version = "2.5.9", package = "async-graphql-parser" }
 value = { version = "2.5.9", package = "async-graphql-value" }
@@ -36,5 +35,4 @@ fastrand = "1.4.0"
 [workspace]
 members = [
     "crates/core",
-    "crates/transports"
 ]
