@@ -33,6 +33,7 @@ struct Context<'a> {
     key_id: usize,
 }
 
+/// Query plan generator
 pub struct PlanBuilder<'a> {
     schema: &'a ComposedSchema,
     document: ExecutableDocument,

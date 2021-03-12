@@ -5,7 +5,7 @@ kind: Deployment
 metadata:
   name: {{ .name }}
 spec:
-  replicas: {{ $.Values.replicas }}
+  replicas: {{ $.Values.example_replicas }}
   selector:
     matchLabels:
       app: {{ .name }}

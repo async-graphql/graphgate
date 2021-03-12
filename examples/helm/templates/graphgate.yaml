@@ -32,14 +32,14 @@ kind: ConfigMap
 metadata:
   name: graphgate-config
 data:
-  config-file: {{ .Files.Get "config.toml" | quote }}
+  config.toml: {{ .Files.Get "config.toml" | quote }}
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: graphgate
 spec:
-  replicas: 1
+  replicas: {{ $.Values.gateway_replicas }}
   selector:
     matchLabels:
       app: graphgate
@@ -55,15 +55,15 @@ spec:
         - name: config
           configMap:
             name: graphgate-config
-            items:
-              - key: config-file
-                path: /config.toml
       containers:
         - image: scott829/graphgate:latest
           imagePullPolicy: Always
           name: graphgate
+          volumeMounts:
+            - mountPath: /config
+              name: config-volume
           args:
-            - /config.toml
+            - /config/config.toml
           readinessProbe:
             httpGet:
               path: /health

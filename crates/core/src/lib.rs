@@ -7,7 +7,7 @@ mod utils;
 mod validation;
 
 pub use executor::{
-    query, server as websocket_server, Executor, Protocols as WebSocketProtocols, ServiceRoute,
+    server as websocket_server, Executor, Protocols as WebSocketProtocols, ServiceRoute,
     ServiceRouteTable,
 };
 pub use planner::PlanBuilder;

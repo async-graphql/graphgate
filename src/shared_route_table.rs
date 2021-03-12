@@ -45,7 +45,10 @@ impl Default for SharedRouteTable {
 
 impl SharedRouteTable {
     async fn update_loop(self, mut rx: mpsc::UnboundedReceiver<Command>) {
-        let mut update_interval = tokio::time::interval_at(Instant::now(), Duration::from_secs(1));
+        let mut update_interval = tokio::time::interval_at(
+            Instant::now() + Duration::from_secs(3),
+            Duration::from_secs(30),
+        );
 
         loop {
             tokio::select! {
@@ -91,12 +94,13 @@ impl SharedRouteTable {
         let resp = futures_util::future::try_join_all(route_table.keys().map(|service| {
             let route_table = route_table.clone();
             async move {
-                let resp =
-                    graphgate_core::query(&route_table, service, Request::new(QUERY_SDL), None)
-                        .await
-                        .with_context(|| format!("Failed to fetch SDL from '{}'.", service))?;
-                let resp: ResponseQuery =
-                    value::from_value(resp.data).context("Failed to parse response.")?;
+                let resp = route_table
+                    .query(service, Request::new(QUERY_SDL), None)
+                    .await
+                    .with_context(|| format!("Failed to fetch SDL from '{}'.", service))?;
+                let resp: ResponseQuery = value::from_value(resp.data)
+                    .context("Failed to parse response.")
+                    .unwrap();
                 let document = parser::parse_schema(resp.service.sdl)
                     .with_context(|| format!("Invalid SDL from '{}'.", service))?;
                 Ok::<_, Error>((service.to_string(), document))
@@ -113,7 +117,7 @@ impl SharedRouteTable {
         self.tx.send(Command::Change(route_table)).ok();
     }
 
-    pub async fn get_inner(&self) -> Option<(Arc<ComposedSchema>, Arc<ServiceRouteTable>)> {
+    pub async fn get(&self) -> Option<(Arc<ComposedSchema>, Arc<ServiceRouteTable>)> {
         let (composed_schema, route_table) = {
             let inner = self.inner.lock().await;
             (inner.schema.clone(), inner.route_table.clone())
@@ -132,7 +136,7 @@ impl SharedRouteTable {
             }
         };
 
-        let (composed_schema, route_table) = match self.get_inner().await {
+        let (composed_schema, route_table) = match self.get().await {
             Some((composed_schema, route_table)) => (composed_schema, route_table),
             _ => {
                 return HttpResponse::builder()

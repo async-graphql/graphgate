@@ -71,7 +71,8 @@ pub async fn server(
                     match client_msg {
                         ClientMessage::ConnectionInit { mut payload } if controller.is_none() => {
                             append_header_map_to_payload(&mut payload, &header_map);
-                            controller = Some(WebSocketController::new(route_table.clone(), payload));
+                            controller = Some(WebSocketController::new(route_table.clone(), &header_map, payload));
+                            sink.send(Message::text(serde_json::to_string(&ServerMessage::ConnectionAck).unwrap())).await.ok();
                         }
                         ClientMessage::ConnectionInit { .. } => {
                             match protocol {
@@ -92,7 +93,7 @@ pub async fn server(
                             }
                         }
                         ClientMessage::Start { id, payload } | ClientMessage::Subscribe { id, payload } => {
-                            let controller = controller.get_or_insert_with(|| WebSocketController::new(route_table.clone(), None)).clone();
+                            let controller = controller.get_or_insert_with(|| WebSocketController::new(route_table.clone(), &header_map, None)).clone();
                             let document = match parser::parse_query(&payload.query) {
                                 Ok(document) => document,
                                 Err(err) => {
@@ -134,7 +135,7 @@ pub async fn server(
                             streams.insert(id, Box::pin(stream));
                         }
                         ClientMessage::Stop { id } => {
-                            let controller = controller.get_or_insert_with(|| WebSocketController::new(route_table.clone(), None)).clone();
+                            let controller = controller.get_or_insert_with(|| WebSocketController::new(route_table.clone(), &header_map, None)).clone();
                             controller.stop(id).await;
                         }
                         _ => {}

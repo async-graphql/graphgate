@@ -22,15 +22,13 @@ structopt = "0.3.21"
 kube = { version = "0.51.0", features = ["derive", "native-tls"], default-features = false }
 k8s-openapi = { version = "0.11.0", features = ["v1_19"], default-features = false }
 schemars = { version = "0.8.0", features = ["chrono"] }
-chrono = { version = "0.4.19", features = ["serde"] }
 serde_yaml = "0.8.17"
-thiserror = "1.0.24"
-async-stream = "0.3.0"
 
 [dev-dependencies]
 async-graphql = { version = "2.5.12", default-features = false }
 async-graphql-warp = "2.5.12"
 fastrand = "1.4.0"
+async-stream = "0.3.0"
 
 [workspace]
 members = [

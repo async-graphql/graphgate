@@ -35,7 +35,7 @@ pub async fn find_graphql_services() -> Result<ServiceRouteTable> {
         std::fs::read_to_string(NAMESPACE_PATH).unwrap_or_else(|_| "default".to_string());
     tracing::trace!(namespace = %namespace, "Get current namespace.");
 
-    let mut route_table = ServiceRouteTable::new();
+    let mut route_table = ServiceRouteTable::default();
     let services_api: Api<Service> = Api::namespaced(client, &namespace);
 
     tracing::trace!("List all services.");

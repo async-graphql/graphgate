@@ -16,15 +16,12 @@ struct Query;
 
 #[Object(extends)]
 impl Query {
+    /// Get the current user.
     async fn me(&self) -> User {
         User {
             id: "1234".into(),
             username: "Me".to_string(),
         }
-    }
-
-    async fn user(&self, id: ID, username: String) -> User {
-        User { id, username }
     }
 
     #[graphql(entity)]

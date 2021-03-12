@@ -1,6 +1,7 @@
 port: 8000
 
-replicas: 3
+gateway_replicas: 3
+example_replicas: 3
 
 services:
   - name: accounts

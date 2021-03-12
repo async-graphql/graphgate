@@ -2,6 +2,7 @@ mod introspection;
 mod websocket;
 
 use std::collections::{BTreeMap, HashMap};
+use std::ops::{Deref, DerefMut};
 
 use futures_util::future::BoxFuture;
 use futures_util::stream::BoxStream;
@@ -22,15 +23,72 @@ use crate::planner::{
 };
 use crate::{ComposedSchema, Request, Response, ServerError};
 
+/// Service routing information.
 #[derive(Clone, Eq, PartialEq, Debug)]
 pub struct ServiceRoute {
+    /// Service address
+    ///
+    /// For example: 1.2.3.4:8000, example.com:8080
     pub addr: String,
+
+    /// GraphQL HTTP path, default is `/`.
     pub query_path: Option<String>,
+
+    /// GraphQL WebSocket path, default is `/`.
     pub subscribe_path: Option<String>,
 }
 
-pub type ServiceRouteTable = HashMap<String, ServiceRoute>;
+/// Service routing table
+///
+/// The key is the service name.
+#[derive(Default, Debug, Clone, Eq, PartialEq)]
+pub struct ServiceRouteTable(HashMap<String, ServiceRoute>);
 
+impl Deref for ServiceRouteTable {
+    type Target = HashMap<String, ServiceRoute>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl DerefMut for ServiceRouteTable {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+impl ServiceRouteTable {
+    /// Call the GraphQL query of the specified service.
+    pub async fn query(
+        &self,
+        service: impl AsRef<str>,
+        request: Request,
+        header_map: Option<&HeaderMap>,
+    ) -> anyhow::Result<Response> {
+        let service = service.as_ref();
+        let route = self.0.get(service).ok_or_else(|| {
+            anyhow::anyhow!("Service '{}' is not defined in the routing table.", service)
+        })?;
+        let url = match &route.query_path {
+            Some(path) => format!("http://{}{}", route.addr, path),
+            None => format!("http://{}", route.addr),
+        };
+        let client = reqwest::Client::new();
+        let resp = client
+            .post(&url)
+            .headers(header_map.cloned().unwrap_or_default())
+            .json(&request)
+            .send()
+            .await?
+            .error_for_status()?
+            .json::<Response>()
+            .await?;
+        Ok(resp)
+    }
+}
+
+/// Query plan executor
 pub struct Executor<'e> {
     schema: &'e ComposedSchema,
     route_table: &'e ServiceRouteTable,
@@ -55,11 +113,15 @@ impl<'e> Executor<'e> {
         }
     }
 
+    /// Execute a query plan and return the results.
+    ///
+    /// Only `Query` and `Mutation` operations are supported.
     pub async fn execute(self, node: &PlanNode<'_>) -> Response {
         self.execute_node(node).await;
         self.resp.into_inner()
     }
 
+    /// Execute a subscription plan and return a stream.
     pub async fn execute_stream<'a>(
         self,
         ws_controller: WebSocketController,
@@ -158,7 +220,10 @@ impl<'e> Executor<'e> {
     async fn execute_fetch_node(&self, fetch: &FetchNode<'_>) {
         let request = fetch.to_request();
         tracing::debug!(service = fetch.service, request = ?request, "Query");
-        let res = query(self.route_table, fetch.service, request, self.headers_map).await;
+        let res = self
+            .route_table
+            .query(fetch.service, request, self.headers_map)
+            .await;
         let mut current_resp = self.resp.lock();
 
         match res {
@@ -328,7 +393,10 @@ impl<'e> Executor<'e> {
 
         let request = flatten.to_request(representations);
         tracing::debug!(service = flatten.service, request = ?request, "Query");
-        let res = query(self.route_table, flatten.service, request, self.headers_map).await;
+        let res = self
+            .route_table
+            .query(flatten.service, request, self.headers_map)
+            .await;
         let current_resp = &mut self.resp.lock();
 
         match res {
@@ -390,30 +458,4 @@ fn merge_errors(target: &mut Vec<ServerError>, errors: Vec<ServerError>) {
             locations: Default::default(),
         })
     }
-}
-
-pub async fn query(
-    route_table: &ServiceRouteTable,
-    service: &str,
-    request: Request,
-    header_map: Option<&HeaderMap>,
-) -> anyhow::Result<Response> {
-    let route = route_table.get(service).ok_or_else(|| {
-        anyhow::anyhow!("Service '{}' is not defined in the routing table.", service)
-    })?;
-    let url = match &route.query_path {
-        Some(path) => format!("http://{}{}", route.addr, path),
-        None => format!("http://{}", route.addr),
-    };
-    let client = reqwest::Client::new();
-    let resp = client
-        .post(&url)
-        .headers(header_map.cloned().unwrap_or_default())
-        .json(&request)
-        .send()
-        .await?
-        .error_for_status()?
-        .json::<Response>()
-        .await?;
-    Ok(resp)
 }

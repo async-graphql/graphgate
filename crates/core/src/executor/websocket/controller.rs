@@ -4,17 +4,20 @@ use std::sync::Arc;
 use anyhow::Result;
 use futures_util::stream::{SplitSink, SplitStream};
 use futures_util::{SinkExt, StreamExt};
-use http::Request as HttpRequest;
+use http::{HeaderMap, Request as HttpRequest};
 use tokio::net::TcpStream;
 use tokio::sync::{mpsc, oneshot};
 use tokio::time::Duration;
+use tokio_tungstenite::tungstenite::protocol::CloseFrame;
 use tokio_tungstenite::tungstenite::{Message, Result as WsResult};
 use tokio_tungstenite::{MaybeTlsStream, WebSocketStream};
 
+use super::grouped_stream::{GroupedStream, StreamEvent};
 use super::protocol::{ClientMessage, Protocols, ServerMessage};
-use crate::executor::websocket::grouped_stream::{GroupedStream, StreamEvent};
 use crate::executor::ServiceRoute;
 use crate::{Request, Response, ServiceRouteTable};
+
+const CONNECT_TIMEOUT_SECONDS: u64 = 5;
 
 struct SubscribeCommand {
     service: String,
@@ -41,11 +44,13 @@ pub struct WebSocketController {
 impl WebSocketController {
     pub fn new(
         route_table: Arc<ServiceRouteTable>,
+        header_map: &HeaderMap,
         init_payload: Option<serde_json::Value>,
     ) -> Self {
         let (tx_command, rx_command) = mpsc::unbounded_channel();
         let ctx = WebSocketContext {
             route_table,
+            header_map: header_map.clone(),
             init_payload,
             upstream: GroupedStream::default(),
             upstream_info: Default::default(),
@@ -103,6 +108,7 @@ struct SubscribeInfo {
 
 struct WebSocketContext {
     route_table: Arc<ServiceRouteTable>,
+    header_map: HeaderMap,
     init_payload: Option<serde_json::Value>,
     upstream: GroupedStream<String, SplitStream<WebSocketStream<MaybeTlsStream<TcpStream>>>>,
     upstream_info: HashMap<String, UpstreamInfo>,
@@ -163,11 +169,12 @@ impl WebSocketContext {
             }
         };
         tracing::debug!(url = %url, service = service, "Connect to upstream websocket");
-        let http_request = HttpRequest::builder()
+        let mut http_request = HttpRequest::builder()
             .uri(&url)
             .header("Sec-WebSocket-Protocol", PROTOCOLS)
             .body(())
             .unwrap();
+        http_request.headers_mut().extend(self.header_map.clone());
         let (mut stream, http_response) = tokio_tungstenite::connect_async(http_request).await?;
         let protocol = http_response
             .headers()
@@ -190,7 +197,7 @@ impl WebSocketContext {
             ))
             .await?;
 
-        let timeout = tokio::time::sleep(Duration::from_secs(5));
+        let timeout = tokio::time::sleep(Duration::from_secs(CONNECT_TIMEOUT_SECONDS));
         tokio::pin!(timeout);
 
         loop {
@@ -208,9 +215,10 @@ impl WebSocketContext {
                     Some(Ok(Message::Ping(data))) => {
                         stream.send(Message::Pong(data)).await?;
                     }
-                    Some(Ok(_)) => {}
+                    Some(Ok(Message::Close(Some(CloseFrame{ code, reason })))) => return Err(anyhow::anyhow!("Connection closed by server, code={} reason={}", code, reason)),
                     Some(Err(err)) => return Err(anyhow::anyhow!("Connection error. {}", err)),
-                    None => return Err(anyhow::anyhow!("Connection closed by server.")),
+                    Some(Ok(Message::Close(None))) | None => return Err(anyhow::anyhow!("Connection closed by server.")),
+                    Some(Ok(_)) => {}
                 }
             }
         }
