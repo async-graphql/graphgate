@@ -52,7 +52,7 @@ spec:
     spec:
       serviceAccountName: graphgate
       volumes:
-        - name: config
+        - name: config-volume
           configMap:
             name: graphgate-config
       containers:

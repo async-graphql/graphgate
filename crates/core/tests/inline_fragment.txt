@@ -1,0 +1,11 @@
+{
+    me {
+        ... { id username }
+    }
+}
+---
+{
+    "type": "fetch",
+    "service": "accounts",
+    "query": "query { me { id username } }"
+}

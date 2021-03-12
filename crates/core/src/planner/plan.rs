@@ -170,9 +170,9 @@ impl<'a> FlattenNode<'a> {
 pub enum SubscribeNode<'a> {
     #[serde(rename_all = "camelCase")]
     Subscribe {
-        fetch_nodes: Vec<FetchNode<'a>>,
+        subscribe_nodes: Vec<FetchNode<'a>>,
         #[serde(skip_serializing_if = "Option::is_none")]
-        query_nodes: Option<PlanNode<'a>>,
+        flatten_nodes: Option<PlanNode<'a>>,
     },
     Query(PlanNode<'a>),
 }

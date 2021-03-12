@@ -1,0 +1,59 @@
+{
+    me {
+        reviews {
+            body
+            attachment {
+                __typename
+                ... on Image {
+                    width
+                    height
+                    data
+                }
+                ... on Audio {
+                    duration
+                    data
+                }
+                ... on Text {
+                    content
+                }
+            }
+        }
+    }
+}
+---
+{
+    "type": "sequence",
+    "nodes": [
+        {
+            "type": "fetch",
+            "service": "accounts",
+            "query": "query { me { ... { __key1___typename:__typename __key1_id:id } } }"
+        },
+        {
+            "type": "flatten",
+            "service": "reviews",
+            "path": "me",
+            "prefix": 1,
+            "query": "query($representations:[_Any!]!) { _entities(representations:$representations) { ... on User { reviews { body attachment { ... on Text { __typename } ... on Image { __typename } ... on Audio { __typename } ... on Image { ... { __key2___typename:__typename __key2_id:id } } ... on Audio { ... { __key3___typename:__typename __key3_id:id } } ... on Text { content } } } } } }"
+        },
+        {
+            "type": "parallel",
+            "nodes": [
+                {
+                    "type": "flatten",
+                    "service": "attachments",
+                    "path": "me.[reviews].attachment(Image)",
+                    "prefix": 2,
+                    "query": "query($representations:[_Any!]!) { _entities(representations:$representations) { ... on Image { width height data } } }"
+                },
+                {
+                    "type": "flatten",
+                    "service": "attachments",
+                    "path": "me.[reviews].attachment(Audio)",
+                    "prefix": 3,
+                    "query": "query($representations:[_Any!]!) { _entities(representations:$representations) { ... on Audio { duration data } } }"
+                }
+            ]
+        }
+    ]
+}

@@ -170,7 +170,7 @@ pub struct ComposedSchema {
     pub(crate) query_type: Option<Name>,
     pub(crate) mutation_type: Option<Name>,
     pub(crate) subscription_type: Option<Name>,
-    pub(crate) types: HashMap<Name, MetaType>,
+    pub(crate) types: IndexMap<Name, MetaType>,
     pub(crate) directives: HashMap<Name, MetaDirective>,
 }
 

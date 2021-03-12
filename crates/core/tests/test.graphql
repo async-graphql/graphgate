@@ -1,22 +1,30 @@
 directive @composedGraph(version: Int!) on SCHEMA
-directive @service(name: String! url: String!) on SCHEMA
 directive @owner(service: String!) on OBJECT
 directive @key(fields: String! service: String!) on OBJECT
 directive @resolve(service: String!) on FIELD_DEFINITION
 directive @provides(fields: String!) on FIELD_DEFINITION
 directive @requires(fields: String!) on FIELD_DEFINITION
 
+scalar DateTime
+
 schema
 @composedGraph(version: 1)
 {
     query: Query
     subscription: Subscription
+    mutation: Mutation
 }
 
 type Query {
     me: User @resolve(service: "accounts")
     user(id: ID!): User @resolve(service: "accounts")
-    topProducts: [Product!] @resolve(service: "products")
+    topProducts: [Product!]! @resolve(service: "products")
+}
+
+type Mutation {
+    createUser(username: String): User! @resolve(service: "accounts")
+    createProduct(name: String!, price: Int!): Product!  @resolve(service: "products")
+    createReview(body: String!, attachmentId: ID): Review!  @resolve(service: "reviews")
 }
 
 type Subscription {
@@ -28,29 +36,97 @@ type Subscription {
 type User
 @owner(service: "accounts")
 @key(fields: "id" service: "accounts")
+@key(fields: "id" service: "products")
 @key(fields: "id" service: "reviews")
 {
     id: ID!
     username: String!
     reviews: [Review]! @resolve(service: "reviews")
+    products: [Product]! @resolve(service: "products")
 }
 
-type Product
-@owner(service: "products")
-@key(fields: "upc" service: "accounts")
-@key(fields: "upc" service: "products")
-@key(fields: "upc" service: "reviews")
-{
+interface Product {
     upc: String!
     name: String!
     price: Int!
     reviews: [Review]! @resolve(service: "reviews")
 }
 
+type Mouse implements Product
+@owner(service: "products")
+{
+    upc: String!
+    name: String!
+    price: Int!
+    reviews: [Review]! @resolve(service: "reviews")
+
+    isWireless: Boolean!
+}
+
+type Book implements Product
+@owner(service: "books")
+@key(fields: "upc" service: "books")
+@key(fields: "upc" service: "reviews")
+{
+    upc: String!
+    name: String!
+    price: Int!
+    reviews: [Review]! @resolve(service: "reviews")
+
+    isbn: String!
+    issuer: String!
+    publishDate: DateTime!
+}
+
+type Car implements Product
+@owner(service: "cars")
+@key(fields: "upc" service: "cars")
+@key(fields: "upc" service: "reviews")
+{
+    upc: String!
+    name: String!
+    price: Int!
+    reviews: [Review]! @resolve(service: "reviews")
+
+    brand: String!
+    power: Int!
+    torque: Int!
+}
+
 type Review
 @owner(service: "reviews")
 {
-    body: String
-    author: User
-    product: Product
+    body: String!
+    author: User!
+    product: Product!
+    attachment: Attachment
+}
+
+union Attachment = Text | Image | Audio
+
+type Text
+@owner(service: "reviews")
+@key(fields: "id" service:"reviews")
+{
+    id: ID!
+    content: String!
+}
+
+type Image
+@owner(service: "attachments")
+@key(fields: "id" service:"attachments")
+{
+    id: ID!
+    width: Int!
+    height: Int!
+    data: String!
+}
+
+type Audio
+@owner(service: "attachments")
+@key(fields: "id" service:"attachments")
+{
+    id: ID!
+    duration: Float!
+    data: String!
 }

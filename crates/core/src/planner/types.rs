@@ -38,15 +38,6 @@ pub enum SelectionRef<'a> {
 #[derive(Default, Debug)]
 pub struct SelectionRefSet<'a>(pub Vec<SelectionRef<'a>>);
 
-impl<'a> Serialize for SelectionRefSet<'a> {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        serializer.serialize_str(&self.to_string())
-    }
-}
-
 impl<'a> Display for SelectionRefSet<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         stringify_selection_ref_set_rec(f, self)
@@ -146,11 +137,8 @@ fn stringify_key_fields(f: &mut Formatter<'_>, prefix: usize, fields: &KeyFields
         write!(f, "}}")
     }
 
-    for (idx, (field_name, children)) in fields.iter().enumerate() {
-        if idx > 0 {
-            write!(f, " ")?;
-        }
-        write!(f, "__key{}_{}:{}", prefix, field_name, field_name)?;
+    for (field_name, children) in fields.iter() {
+        write!(f, " __key{}_{}:{}", prefix, field_name, field_name)?;
         stringify_key_fields_no_prefix(f, &children)?;
     }
     Ok(())
@@ -173,7 +161,6 @@ fn stringify_selection_ref_set_rec(
                 }
                 write!(f, "{}", field.field.name.node)?;
                 if !field.field.arguments.is_empty() {
-                    write!(f, " ")?;
                     stringify_argument(f, &field.field.arguments)?;
                 }
                 if !field.field.directives.is_empty() {
@@ -191,14 +178,14 @@ fn stringify_selection_ref_set_rec(
             SelectionRef::RequiredRef(require_ref) => {
                 write!(
                     f,
-                    "... {{ __key{}___typename:__typename ",
+                    "... {{ __key{}___typename:__typename",
                     require_ref.prefix,
                 )?;
                 stringify_key_fields(f, require_ref.prefix, &require_ref.fields)?;
                 if let Some(requires) = require_ref.requires {
                     stringify_key_fields(f, require_ref.prefix, &requires)?;
                 }
-                write!(f, " }} ")?;
+                write!(f, " }}")?;
             }
             SelectionRef::InlineFragment {
                 type_condition,

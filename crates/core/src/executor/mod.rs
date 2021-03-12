@@ -133,8 +133,8 @@ impl<'e> Executor<'e> {
                 yield self.execute(node).await
             }),
             SubscribeNode::Subscribe {
-                fetch_nodes,
-                query_nodes,
+                subscribe_nodes: fetch_nodes,
+                flatten_nodes: query_nodes,
             } => {
                 let (tx, mut rx) = mpsc::unbounded_channel();
                 if let Err(err) =
@@ -243,8 +243,25 @@ impl<'e> Executor<'e> {
 
     #[instrument(skip(self), level = "debug")]
     async fn execute_flatten_node(&self, flatten: &FlattenNode<'_>) {
-        fn extract_keys(from: &mut BTreeMap<Name, ConstValue>, prefix: usize) -> ConstValue {
+        enum Representation {
+            Keys(ConstValue),
+            Skip,
+        }
+
+        fn extract_keys(
+            from: &mut BTreeMap<Name, ConstValue>,
+            prefix: usize,
+            possible_type: Option<&str>,
+        ) -> Representation {
             let prefix = format!("__key{}_", prefix);
+
+            if let Some(possible_type) = possible_type {
+                match from.get(format!("{}__typename", prefix).as_str()) {
+                    Some(ConstValue::String(typename)) if typename == possible_type => {}
+                    _ => return Representation::Skip,
+                }
+            }
+
             let mut res = BTreeMap::new();
             let mut keys = Vec::new();
             for key in from.keys() {
@@ -258,11 +275,11 @@ impl<'e> Executor<'e> {
                     res.insert(name, value);
                 }
             }
-            ConstValue::Object(res)
+            Representation::Keys(ConstValue::Object(res))
         }
 
         fn get_representations(
-            representations: &mut Vec<ConstValue>,
+            representations: &mut Vec<Representation>,
             value: &mut ConstValue,
             path: &[PathSegment<'_>],
             prefix: usize,
@@ -277,14 +294,22 @@ impl<'e> Executor<'e> {
                 match value {
                     ConstValue::Object(object) if !segment.is_list => {
                         if let Some(ConstValue::Object(key_object)) = object.get_mut(segment.name) {
-                            representations.push(extract_keys(key_object, prefix));
+                            representations.push(extract_keys(
+                                key_object,
+                                prefix,
+                                segment.possible_type,
+                            ));
                         }
                     }
                     ConstValue::Object(object) if segment.is_list => {
                         if let Some(ConstValue::List(array)) = object.get_mut(segment.name) {
                             for element in array {
                                 if let ConstValue::Object(element_obj) = element {
-                                    representations.push(extract_keys(element_obj, prefix));
+                                    representations.push(extract_keys(
+                                        element_obj,
+                                        prefix,
+                                        segment.possible_type,
+                                    ));
                                 }
                             }
                         }
@@ -310,21 +335,11 @@ impl<'e> Executor<'e> {
             }
         }
 
-        #[inline]
-        fn take_value(n: &mut usize, values: &mut [ConstValue]) -> Option<ConstValue> {
-            if *n >= values.len() {
-                return None;
-            }
-            let value = std::mem::take(&mut values[*n]);
-            *n += 1;
-            Some(value)
-        }
-
         fn flatten_values(
             target: &mut ConstValue,
             path: &[PathSegment<'_>],
-            n: &mut usize,
-            values: &mut [ConstValue],
+            values: &mut impl Iterator<Item = ConstValue>,
+            flags: &mut impl Iterator<Item = bool>,
         ) {
             let segment = match path.get(0) {
                 Some(segment) => segment,
@@ -336,16 +351,20 @@ impl<'e> Executor<'e> {
                 match target {
                     ConstValue::Object(object) if !segment.is_list => {
                         if let Some(target) = object.get_mut(segment.name) {
-                            if let Some(value) = take_value(n, values) {
-                                merge_data(target, value);
+                            if let Some(true) = flags.next() {
+                                if let Some(value) = values.next() {
+                                    merge_data(target, value);
+                                }
                             }
                         }
                     }
                     ConstValue::Object(object) if segment.is_list => {
                         if let Some(ConstValue::List(array)) = object.get_mut(segment.name) {
                             for element in array {
-                                if let Some(value) = take_value(n, values) {
-                                    merge_data(element, value);
+                                if let Some(true) = flags.next() {
+                                    if let Some(value) = values.next() {
+                                        merge_data(element, value);
+                                    }
                                 }
                             }
                         }
@@ -356,13 +375,13 @@ impl<'e> Executor<'e> {
                 match target {
                     ConstValue::Object(object) if !segment.is_list => {
                         if let Some(next_value) = object.get_mut(segment.name) {
-                            flatten_values(next_value, &path[1..], n, values);
+                            flatten_values(next_value, &path[1..], values, flags);
                         }
                     }
                     ConstValue::Object(object) if segment.is_list => {
                         if let Some(ConstValue::List(array)) = object.get_mut(segment.name) {
                             for element in array {
-                                flatten_values(element, &path[1..], n, values);
+                                flatten_values(element, &path[1..], values, flags);
                             }
                         }
                     }
@@ -371,7 +390,7 @@ impl<'e> Executor<'e> {
             }
         }
 
-        let representations = {
+        let (representations, flags) = {
             let mut representations = Vec::new();
             let mut resp = self.resp.lock();
             get_representations(
@@ -383,12 +402,23 @@ impl<'e> Executor<'e> {
             if representations.is_empty() {
                 return;
             }
+
+            let mut flags = Vec::with_capacity(representations.len());
+            let mut values = Vec::with_capacity(representations.len());
+
+            for representation in representations {
+                match representation {
+                    Representation::Keys(value) => {
+                        values.push(value);
+                        flags.push(true);
+                    }
+                    Representation::Skip => flags.push(false),
+                }
+            }
+
             let mut variables = Variables::default();
-            variables.insert(
-                Name::new("representations"),
-                ConstValue::List(representations),
-            );
-            variables
+            variables.insert(Name::new("representations"), ConstValue::List(values));
+            (variables, flags)
         };
 
         let request = flatten.to_request(representations);
@@ -403,13 +433,12 @@ impl<'e> Executor<'e> {
             Ok(resp) => {
                 if resp.errors.is_empty() {
                     if let ConstValue::Object(mut data) = resp.data {
-                        if let Some(ConstValue::List(mut values)) = data.remove("_entities") {
-                            let mut n = 0;
+                        if let Some(ConstValue::List(values)) = data.remove("_entities") {
                             flatten_values(
                                 &mut current_resp.data,
                                 &flatten.path,
-                                &mut n,
-                                &mut values,
+                                &mut values.into_iter().fuse(),
+                                &mut flags.into_iter().fuse(),
                             );
                         }
                     }

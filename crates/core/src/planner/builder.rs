@@ -289,7 +289,11 @@ impl<'a> Context<'a> {
                     },
                 }));
             }
-            PlanNode::Parallel(ParallelNode { nodes }).flatten()
+            if operation_type == OperationType::Query {
+                PlanNode::Parallel(ParallelNode { nodes }).flatten()
+            } else {
+                PlanNode::Sequence(SequenceNode { nodes }).flatten()
+            }
         };
         nodes.push(fetch_node);
 
@@ -455,8 +459,8 @@ impl<'a> Context<'a> {
         }
 
         SubscribeNode::Subscribe {
-            fetch_nodes,
-            query_nodes: if query_nodes.is_empty() {
+            subscribe_nodes: fetch_nodes,
+            flatten_nodes: if query_nodes.is_empty() {
                 None
             } else {
                 Some(PlanNode::Sequence(SequenceNode { nodes: query_nodes }))
@@ -570,24 +574,6 @@ impl<'a> Context<'a> {
             None => return,
         };
 
-        if field_type.kind == TypeKind::Interface {
-            path.push(PathSegment {
-                name: field.response_key().node.as_str(),
-                is_list: is_list(&field_definition.ty),
-                possible_type: None,
-            });
-            self.build_interface_field(
-                path,
-                selection_ref_set,
-                fetch_entity_group,
-                current_service,
-                &field,
-                &field_type,
-            );
-            path.pop();
-            return;
-        }
-
         let service = match field_definition
             .service
             .as_deref()
@@ -623,26 +609,38 @@ impl<'a> Context<'a> {
             }
         }
 
-        let mut sub_selection_set = SelectionRefSet::default();
         path.push(PathSegment {
             name: field.response_key().node.as_str(),
             is_list: is_list(&field_definition.ty),
             possible_type: None,
         });
+        let mut sub_selection_set = SelectionRefSet::default();
 
-        self.build_selection_set(
-            path,
-            &mut sub_selection_set,
-            fetch_entity_group,
-            current_service,
-            field_type,
-            &field.selection_set.node,
-        );
-        path.pop();
+        if matches!(field_type.kind, TypeKind::Interface | TypeKind::Union) {
+            self.build_abstract_selection_set(
+                path,
+                &mut sub_selection_set,
+                fetch_entity_group,
+                current_service,
+                &field_type,
+                &field.selection_set.node,
+            );
+        } else {
+            self.build_selection_set(
+                path,
+                &mut sub_selection_set,
+                fetch_entity_group,
+                current_service,
+                field_type,
+                &field.selection_set.node,
+            );
+        }
+
         selection_ref_set.0.push(SelectionRef::FieldRef(FieldRef {
             field,
             selection_set: sub_selection_set,
         }));
+        path.pop();
     }
 
     fn add_fetch_entity(
@@ -665,13 +663,6 @@ impl<'a> Context<'a> {
         match fetch_entity_group.get_mut(&fetch_entity_key) {
             Some(fetch_entity) => {
                 fetch_entity.fields.push(field);
-                selection_ref_set
-                    .0
-                    .push(SelectionRef::RequiredRef(RequiredRef {
-                        prefix: fetch_entity.prefix,
-                        fields: keys,
-                        requires: meta_field.requires.as_ref(),
-                    }));
             }
             None => {
                 let prefix = self.take_key_prefix();
@@ -744,14 +735,14 @@ impl<'a> Context<'a> {
         }
     }
 
-    fn build_interface_field(
+    fn build_abstract_selection_set(
         &mut self,
         path: &mut ResponsePath<'a>,
         selection_ref_set: &mut SelectionRefSet<'a>,
         fetch_entity_group: &mut FetchEntityGroup<'a>,
         current_service: &'a str,
-        field: &'a Field,
-        field_type: &'a MetaType,
+        parent_type: &'a MetaType,
+        selection_set: &'a SelectionSet,
     ) {
         fn build_fields_rec<'a>(
             ctx: &mut Context<'a>,
@@ -841,6 +832,9 @@ impl<'a> Context<'a> {
                 possible_type,
             );
             path.last_mut().unwrap().possible_type = None;
+            if sub_selection_set.0.is_empty() {
+                return;
+            }
             selection_ref_set.0.push(SelectionRef::InlineFragment {
                 type_condition: Some(type_condition),
                 selection_set: sub_selection_set,
@@ -908,7 +902,7 @@ impl<'a> Context<'a> {
             }
         }
 
-        for possible_type in &field_type.possible_types {
+        for possible_type in &parent_type.possible_types {
             if let Some(ty) = self.schema.types.get(possible_type) {
                 path.last_mut().unwrap().possible_type = Some(ty.name.as_str());
                 build_fields(
@@ -917,7 +911,7 @@ impl<'a> Context<'a> {
                     selection_ref_set,
                     fetch_entity_group,
                     current_service,
-                    &field.selection_set.node,
+                    selection_set,
                     ty,
                 );
                 path.last_mut().unwrap().possible_type = None;
@@ -930,7 +924,7 @@ impl<'a> Context<'a> {
             selection_ref_set,
             fetch_entity_group,
             current_service,
-            &field.selection_set.node,
+            selection_set,
         );
     }
 

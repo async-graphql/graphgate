@@ -1,0 +1,84 @@
+{
+    topProducts {
+        upc
+        name
+        price
+    }
+}
+---
+{
+    "type": "sequence",
+    "nodes": [
+        {
+            "type": "fetch",
+            "service": "products",
+            "query": "query { topProducts { ... on Mouse { upc name price } ... on Book { upc ... { __key1___typename:__typename __key1_upc:upc } } ... on Car { upc ... { __key2___typename:__typename __key2_upc:upc } } } }"
+        },
+        {
+            "type": "parallel",
+            "nodes": [
+                {
+                    "type": "flatten",
+                    "path": "[topProducts](Book)",
+                    "prefix": 1,
+                    "service": "books",
+                    "query": "query($representations:[_Any!]!) { _entities(representations:$representations) { ... on Book { name price } } }"
+                },
+                {
+                    "type": "flatten",
+                    "path": "[topProducts](Car)",
+                    "prefix": 2,
+                    "service": "cars",
+                    "query": "query($representations:[_Any!]!) { _entities(representations:$representations) { ... on Car { name price } } }"
+                }
+            ]
+        }
+    ]
+}
+---
+{
+    topProducts {
+        upc
+        name
+        price
+        ... on Mouse {
+            isWireless
+        }
+        ... on Book {
+            isbn issuer publishDate
+        }
+        ... on Car {
+            brand power torque
+        }
+    }
+}
+---
+{
+    "type": "sequence",
+    "nodes": [
+        {
+            "type": "fetch",
+            "service": "products",
+            "query": "query { topProducts { ... on Mouse { upc name price } ... on Book { upc ... { __key1___typename:__typename __key1_upc:upc } } ... on Car { upc ... { __key2___typename:__typename __key2_upc:upc } } ... on Mouse { isWireless } } }"
+        },
+        {
+            "type": "parallel",
+            "nodes": [
+                {
+                    "type": "flatten",
+                    "service": "books",
+                    "prefix": 1,
+                    "path": "[topProducts](Book)",
+                    "query": "query($representations:[_Any!]!) { _entities(representations:$representations) { ... on Book { name price isbn issuer publishDate } } }"
+                },
+                {
+                    "type": "flatten",
+                    "service": "cars",
+                    "prefix": 2,
+                    "path": "[topProducts](Car)",
+                    "query": "query($representations:[_Any!]!) { _entities(representations:$representations) { ... on Car { name price brand power torque } } }"
+                }
+            ]
+        }
+    ]
+}

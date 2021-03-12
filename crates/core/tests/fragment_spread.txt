@@ -1,0 +1,15 @@
+fragment A on User {
+    id username
+}
+
+{
+    me {
+        ... A
+    }
+}
+---
+{
+    "type": "fetch",
+    "service": "accounts",
+    "query": "query { me { id username } }"
+}
