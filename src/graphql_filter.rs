@@ -51,8 +51,6 @@ pub fn graphql(
         .and(warp::header::optional::<String>("sec-websocket-protocol"))
         .and(warp::header::headers_cloned())
         .map({
-            let shared_route_table = shared_route_table.clone();
-            let config = config.clone();
             move |ws: Ws, protocols: Option<String>, header_map| {
                 let shared_route_table = shared_route_table.clone();
                 let config = config.clone();

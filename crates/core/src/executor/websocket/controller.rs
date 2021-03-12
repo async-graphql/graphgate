@@ -45,7 +45,7 @@ impl WebSocketController {
     ) -> Self {
         let (tx_command, rx_command) = mpsc::unbounded_channel();
         let ctx = WebSocketContext {
-            route_table: route_table.clone(),
+            route_table,
             init_payload,
             upstream: GroupedStream::default(),
             upstream_info: Default::default(),
