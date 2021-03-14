@@ -1,4 +1,6 @@
+mod fetcher;
 mod introspection;
+mod router_table;
 mod websocket;
 
 use std::collections::{BTreeMap, HashMap};
@@ -22,102 +24,27 @@ use crate::planner::{
     SubscribeNode,
 };
 use crate::{ComposedSchema, Request, Response, ServerError};
-
-/// Service routing information.
-#[derive(Clone, Eq, PartialEq, Debug)]
-pub struct ServiceRoute {
-    /// Service address
-    ///
-    /// For example: 1.2.3.4:8000, example.com:8080
-    pub addr: String,
-
-    /// GraphQL HTTP path, default is `/`.
-    pub query_path: Option<String>,
-
-    /// GraphQL WebSocket path, default is `/`.
-    pub subscribe_path: Option<String>,
-}
-
-/// Service routing table
-///
-/// The key is the service name.
-#[derive(Default, Debug, Clone, Eq, PartialEq)]
-pub struct ServiceRouteTable(HashMap<String, ServiceRoute>);
-
-impl Deref for ServiceRouteTable {
-    type Target = HashMap<String, ServiceRoute>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl DerefMut for ServiceRouteTable {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
-    }
-}
-
-impl ServiceRouteTable {
-    /// Call the GraphQL query of the specified service.
-    pub async fn query(
-        &self,
-        service: impl AsRef<str>,
-        request: Request,
-        header_map: Option<&HeaderMap>,
-    ) -> anyhow::Result<Response> {
-        let service = service.as_ref();
-        let route = self.0.get(service).ok_or_else(|| {
-            anyhow::anyhow!("Service '{}' is not defined in the routing table.", service)
-        })?;
-        let url = match &route.query_path {
-            Some(path) => format!("http://{}{}", route.addr, path),
-            None => format!("http://{}", route.addr),
-        };
-        let client = reqwest::Client::new();
-        let resp = client
-            .post(&url)
-            .headers(header_map.cloned().unwrap_or_default())
-            .json(&request)
-            .send()
-            .await?
-            .error_for_status()?
-            .json::<Response>()
-            .await?;
-        Ok(resp)
-    }
-}
+use fetcher::Fetcher;
 
 /// Query plan executor
 pub struct Executor<'e> {
     schema: &'e ComposedSchema,
-    route_table: &'e ServiceRouteTable,
-    headers_map: Option<&'e HeaderMap>,
     resp: Mutex<Response>,
 }
 
 impl<'e> Executor<'e> {
-    pub fn new(schema: &'e ComposedSchema, route_table: &'e ServiceRouteTable) -> Self {
+    pub fn new(schema: &'e ComposedSchema) -> Self {
         Executor {
             schema,
-            route_table,
-            headers_map: None,
             resp: Mutex::new(Response::default()),
-        }
-    }
-
-    pub fn with_headers(self, headers_map: &'e HeaderMap) -> Self {
-        Self {
-            headers_map: Some(headers_map),
-            ..self
         }
     }
 
     /// Execute a query plan and return the results.
     ///
     /// Only `Query` and `Mutation` operations are supported.
-    pub async fn execute(self, node: &PlanNode<'_>) -> Response {
-        self.execute_node(node).await;
+    pub async fn execute(self, fetcher: &impl Fetcher, node: &PlanNode<'_>) -> Response {
+        self.execute_node(fetcher, node).await;
         self.resp.into_inner()
     }
 
@@ -177,29 +104,33 @@ impl<'e> Executor<'e> {
         }
     }
 
-    fn execute_node<'a>(&'a self, node: &'a PlanNode<'_>) -> BoxFuture<'a, ()> {
+    fn execute_node<'a>(
+        &'a self,
+        fetcher: &impl Fetcher,
+        node: &'a PlanNode<'_>,
+    ) -> BoxFuture<'a, ()> {
         Box::pin(async move {
             match node {
-                PlanNode::Sequence(sequence) => self.execute_sequence_node(sequence).await,
-                PlanNode::Parallel(parallel) => self.execute_parallel_node(parallel).await,
+                PlanNode::Sequence(sequence) => self.execute_sequence_node(fetcher, sequence).await,
+                PlanNode::Parallel(parallel) => self.execute_parallel_node(fetcher, parallel).await,
                 PlanNode::Introspection(introspection) => {
                     self.execute_introspection_node(introspection)
                 }
-                PlanNode::Fetch(fetch) => self.execute_fetch_node(fetch).await,
-                PlanNode::Flatten(flatten) => self.execute_flatten_node(flatten).await,
+                PlanNode::Fetch(fetch) => self.execute_fetch_node(fetcher, fetch).await,
+                PlanNode::Flatten(flatten) => self.execute_flatten_node(fetcher, flatten).await,
             }
         })
     }
 
     #[instrument(skip(self), level = "debug")]
-    async fn execute_sequence_node(&self, sequence: &SequenceNode<'_>) {
+    async fn execute_sequence_node(&self, fetcher: &impl Fetcher, sequence: &SequenceNode<'_>) {
         for node in &sequence.nodes {
             self.execute_node(node).await;
         }
     }
 
     #[instrument(skip(self), level = "debug")]
-    async fn execute_parallel_node(&self, parallel: &ParallelNode<'_>) {
+    async fn execute_parallel_node(&self, fetcher: &impl Fetcher, parallel: &ParallelNode<'_>) {
         futures_util::future::join_all(
             parallel
                 .nodes
@@ -217,7 +148,7 @@ impl<'e> Executor<'e> {
     }
 
     #[instrument(skip(self), level = "debug")]
-    async fn execute_fetch_node(&self, fetch: &FetchNode<'_>) {
+    async fn execute_fetch_node(&self, fetcher: &impl Fetcher, fetch: &FetchNode<'_>) {
         let request = fetch.to_request();
         tracing::debug!(service = fetch.service, request = ?request, "Query");
         let res = self
@@ -242,7 +173,7 @@ impl<'e> Executor<'e> {
     }
 
     #[instrument(skip(self), level = "debug")]
-    async fn execute_flatten_node(&self, flatten: &FlattenNode<'_>) {
+    async fn execute_flatten_node(&self, fetcher: &impl Fetcher, flatten: &FlattenNode<'_>) {
         enum Representation {
             Keys(ConstValue),
             Skip,
