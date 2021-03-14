@@ -4,6 +4,8 @@
     }
 }
 ---
+{}
+---
 {
     "type": "fetch",
     "service": "accounts",

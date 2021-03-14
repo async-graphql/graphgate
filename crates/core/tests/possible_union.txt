@@ -21,20 +21,22 @@
     }
 }
 ---
+{}
+---
 {
     "type": "sequence",
     "nodes": [
         {
             "type": "fetch",
             "service": "accounts",
-            "query": "query { me { ... { __key1___typename:__typename __key1_id:id } } }"
+            "query": "query { me { __key1___typename:__typename __key1_id:id } }"
         },
         {
             "type": "flatten",
             "service": "reviews",
             "path": "me",
             "prefix": 1,
-            "query": "query($representations:[_Any!]!) { _entities(representations:$representations) { ... on User { reviews { body attachment { ... on Text { __typename } ... on Image { __typename } ... on Audio { __typename } ... on Image { ... { __key2___typename:__typename __key2_id:id } } ... on Audio { ... { __key3___typename:__typename __key3_id:id } } ... on Text { content } } } } } }"
+            "query": "query($representations:[_Any!]!) { _entities(representations:$representations) { ... on User { reviews { body attachment { ... on Text { __typename content } ... on Image { __typename __key2___typename:__typename __key2_id:id } ... on Audio { __typename __key3___typename:__typename __key3_id:id } } } } } }"
         },
         {
             "type": "parallel",

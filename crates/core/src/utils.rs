@@ -1,9 +1,9 @@
-use std::collections::HashSet;
+use indexmap::IndexSet;
 
 use value::Value;
 
-pub fn referenced_variables(value: &Value) -> HashSet<&str> {
-    pub fn referenced_variables_to_hashset<'a>(value: &'a Value, vars: &mut HashSet<&'a str>) {
+pub fn referenced_variables(value: &Value) -> IndexSet<&str> {
+    pub fn referenced_variables_to_hashset<'a>(value: &'a Value, vars: &mut IndexSet<&'a str>) {
         match value {
             Value::Variable(name) => {
                 vars.insert(name);
@@ -18,7 +18,7 @@ pub fn referenced_variables(value: &Value) -> HashSet<&str> {
         }
     }
 
-    let mut vars = HashSet::new();
+    let mut vars = IndexSet::new();
     referenced_variables_to_hashset(value, &mut vars);
     vars
 }

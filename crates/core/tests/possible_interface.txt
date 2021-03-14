@@ -6,13 +6,15 @@
     }
 }
 ---
+{}
+---
 {
     "type": "sequence",
     "nodes": [
         {
             "type": "fetch",
             "service": "products",
-            "query": "query { topProducts { ... on Mouse { upc name price } ... on Book { upc ... { __key1___typename:__typename __key1_upc:upc } } ... on Car { upc ... { __key2___typename:__typename __key2_upc:upc } } } }"
+            "query": "query { topProducts { ... on Mouse { upc name price } ... on Book { upc __key1___typename:__typename __key1_upc:upc } ... on Car { upc __key2___typename:__typename __key2_upc:upc } } }"
         },
         {
             "type": "parallel",
@@ -53,13 +55,15 @@
     }
 }
 ---
+{}
+---
 {
     "type": "sequence",
     "nodes": [
         {
             "type": "fetch",
             "service": "products",
-            "query": "query { topProducts { ... on Mouse { upc name price } ... on Book { upc ... { __key1___typename:__typename __key1_upc:upc } } ... on Car { upc ... { __key2___typename:__typename __key2_upc:upc } } ... on Mouse { isWireless } } }"
+            "query": "query { topProducts { ... on Mouse { upc name price isWireless } ... on Book { upc __key1___typename:__typename __key1_upc:upc } ... on Car { upc __key2___typename:__typename __key2_upc:upc } } }"
         },
         {
             "type": "parallel",

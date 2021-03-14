@@ -13,39 +13,6 @@ use super::grouped_stream::{GroupedStream, StreamEvent};
 use super::protocol::{ClientMessage, ConnectionError, Protocols, ServerMessage};
 use crate::{ComposedSchema, Executor, PlanBuilder, Response, ServerError, ServiceRouteTable};
 
-fn append_header_map_to_payload(payload: &mut Option<serde_json::Value>, header_map: &HeaderMap) {
-    let object = payload
-        .get_or_insert_with(|| serde_json::Value::Object(Default::default()))
-        .as_object_mut()
-        .unwrap();
-
-    let mut headers_obj = serde_json::Map::new();
-    for (name, value) in header_map {
-        match headers_obj.get_mut(name.as_str()) {
-            Some(values) => match values {
-                serde_json::Value::String(first_value) => {
-                    if let Ok(value) = value.to_str() {
-                        *values = serde_json::json!([first_value, value]);
-                    }
-                }
-                serde_json::Value::Array(array) => {
-                    if let Ok(value) = value.to_str() {
-                        array.push(serde_json::json!(value));
-                    }
-                }
-                _ => {}
-            },
-            None => {
-                if let Ok(value) = value.to_str() {
-                    headers_obj.insert(name.as_str().to_string(), serde_json::json!(value));
-                }
-            }
-        }
-    }
-
-    object.insert("__headers".to_string(), headers_obj.into());
-}
-
 pub async fn server(
     schema: Arc<ComposedSchema>,
     route_table: Arc<ServiceRouteTable>,
@@ -69,8 +36,7 @@ pub async fn server(
                     };
 
                     match client_msg {
-                        ClientMessage::ConnectionInit { mut payload } if controller.is_none() => {
-                            append_header_map_to_payload(&mut payload, &header_map);
+                        ClientMessage::ConnectionInit { payload } if controller.is_none() => {
                             controller = Some(WebSocketController::new(route_table.clone(), &header_map, payload));
                             sink.send(Message::text(serde_json::to_string(&ServerMessage::ConnectionAck).unwrap())).await.ok();
                         }

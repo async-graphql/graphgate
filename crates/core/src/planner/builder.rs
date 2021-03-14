@@ -4,7 +4,7 @@ use std::collections::HashMap;
 
 use indexmap::IndexMap;
 use parser::types::{
-    BaseType, DocumentOperations, ExecutableDocument, Field, FragmentDefinition, InlineFragment,
+    BaseType, DocumentOperations, ExecutableDocument, Field, FragmentDefinition,
     OperationDefinition, OperationType, Selection, SelectionSet, Type, VariableDefinition,
 };
 use parser::Positioned;
@@ -744,171 +744,92 @@ impl<'a> Context<'a> {
         parent_type: &'a MetaType,
         selection_set: &'a SelectionSet,
     ) {
-        fn build_fields_rec<'a>(
+        fn build_fields<'a>(
             ctx: &mut Context<'a>,
             path: &mut ResponsePath<'a>,
-            selection_ref_set: &mut SelectionRefSet<'a>,
+            selection_ref_set_group: &mut IndexMap<&'a str, SelectionRefSet<'a>>,
             fetch_entity_group: &mut FetchEntityGroup<'a>,
             current_service: &'a str,
             selection_set: &'a SelectionSet,
             possible_type: &'a MetaType,
         ) {
+            let current_ty = possible_type.name.as_str();
+
             for selection in &selection_set.items {
                 match &selection.node {
                     Selection::Field(field) => {
                         ctx.build_field(
                             path,
-                            selection_ref_set,
+                            selection_ref_set_group.entry(current_ty).or_default(),
                             fetch_entity_group,
                             current_service,
                             possible_type,
                             &field.node,
                         );
                     }
-                    Selection::InlineFragment(inline_fragment)
-                        if inline_fragment.node.type_condition.is_none() =>
-                    {
-                        build_fields_rec(
-                            ctx,
-                            path,
-                            selection_ref_set,
-                            fetch_entity_group,
-                            current_service,
-                            &inline_fragment.node.selection_set.node,
-                            possible_type,
-                        );
-                    }
-                    _ => {}
-                }
-            }
-        }
-
-        fn build_fields<'a>(
-            ctx: &mut Context<'a>,
-            path: &mut ResponsePath<'a>,
-            selection_ref_set: &mut SelectionRefSet<'a>,
-            fetch_entity_group: &mut FetchEntityGroup<'a>,
-            current_service: &'a str,
-            selection_set: &'a SelectionSet,
-            possible_type: &'a MetaType,
-        ) {
-            let mut sub_selection_set = SelectionRefSet::default();
-            build_fields_rec(
-                ctx,
-                path,
-                &mut sub_selection_set,
-                fetch_entity_group,
-                current_service,
-                &selection_set,
-                possible_type,
-            );
-            if !sub_selection_set.0.is_empty() {
-                selection_ref_set.0.push(SelectionRef::InlineFragment {
-                    type_condition: Some(possible_type.name.as_str()),
-                    selection_set: sub_selection_set,
-                });
-            }
-        }
-
-        fn build_fragment<'a>(
-            ctx: &mut Context<'a>,
-            path: &mut ResponsePath<'a>,
-            selection_ref_set: &mut SelectionRefSet<'a>,
-            fetch_entity_group: &mut FetchEntityGroup<'a>,
-            current_service: &'a str,
-            type_condition: &'a str,
-            selection_set: &'a SelectionSet,
-            possible_type: &'a MetaType,
-        ) {
-            let mut sub_selection_set = SelectionRefSet::default();
-            path.last_mut().unwrap().possible_type = Some(possible_type.name.as_str());
-            build_fields_rec(
-                ctx,
-                path,
-                &mut sub_selection_set,
-                fetch_entity_group,
-                current_service,
-                selection_set,
-                possible_type,
-            );
-            path.last_mut().unwrap().possible_type = None;
-            if sub_selection_set.0.is_empty() {
-                return;
-            }
-            selection_ref_set.0.push(SelectionRef::InlineFragment {
-                type_condition: Some(type_condition),
-                selection_set: sub_selection_set,
-            });
-        }
-
-        fn build_type_condition_fragments<'a>(
-            ctx: &mut Context<'a>,
-            path: &mut ResponsePath<'a>,
-            selection_ref_set: &mut SelectionRefSet<'a>,
-            fetch_entity_group: &mut FetchEntityGroup<'a>,
-            current_service: &'a str,
-            selection_set: &'a SelectionSet,
-        ) {
-            for selection in &selection_set.items {
-                match &selection.node {
                     Selection::FragmentSpread(fragment_spread) => {
-                        if let Some(fragment) = ctx
-                            .fragments
-                            .get(fragment_spread.node.fragment_name.node.as_str())
+                        if let Some(fragment) =
+                            ctx.fragments.get(&fragment_spread.node.fragment_name.node)
                         {
-                            let type_condition = fragment.node.type_condition.node.on.node.as_str();
-                            if let Some(ty) = ctx.schema.types.get(type_condition) {
-                                build_fragment(
+                            if fragment.node.type_condition.node.on.node == current_ty {
+                                build_fields(
                                     ctx,
                                     path,
-                                    selection_ref_set,
+                                    selection_ref_set_group,
                                     fetch_entity_group,
                                     current_service,
-                                    type_condition,
                                     &fragment.node.selection_set.node,
-                                    ty,
+                                    possible_type,
                                 );
                             }
                         }
                     }
-                    Selection::InlineFragment(Positioned {
-                        node:
-                            InlineFragment {
-                                type_condition:
-                                    Some(Positioned {
-                                        node: type_condition,
-                                        ..
-                                    }),
-                                selection_set,
-                                ..
-                            },
-                        ..
-                    }) => {
-                        if let Some(ty) = ctx.schema.types.get(type_condition.on.node.as_str()) {
-                            build_fragment(
-                                ctx,
-                                path,
-                                selection_ref_set,
-                                fetch_entity_group,
-                                current_service,
-                                type_condition.on.node.as_str(),
-                                &selection_set.node,
-                                ty,
-                            );
+                    Selection::InlineFragment(inline_fragment) => {
+                        match inline_fragment
+                            .node
+                            .type_condition
+                            .as_ref()
+                            .map(|node| &node.node)
+                        {
+                            Some(type_condition) if type_condition.on.node == current_ty => {
+                                build_fields(
+                                    ctx,
+                                    path,
+                                    selection_ref_set_group,
+                                    fetch_entity_group,
+                                    current_service,
+                                    &inline_fragment.node.selection_set.node,
+                                    possible_type,
+                                );
+                            }
+                            Some(_type_condition) => {
+                                // Other type condition
+                            }
+                            None => {
+                                build_fields(
+                                    ctx,
+                                    path,
+                                    selection_ref_set_group,
+                                    fetch_entity_group,
+                                    current_service,
+                                    &inline_fragment.node.selection_set.node,
+                                    possible_type,
+                                );
+                            }
                         }
                     }
-                    _ => {}
                 }
             }
         }
 
+        let mut selection_ref_set_group = IndexMap::new();
         for possible_type in &parent_type.possible_types {
             if let Some(ty) = self.schema.types.get(possible_type) {
                 path.last_mut().unwrap().possible_type = Some(ty.name.as_str());
                 build_fields(
                     self,
                     path,
-                    selection_ref_set,
+                    &mut selection_ref_set_group,
                     fetch_entity_group,
                     current_service,
                     selection_set,
@@ -918,14 +839,15 @@ impl<'a> Context<'a> {
             }
         }
 
-        build_type_condition_fragments(
-            self,
-            path,
-            selection_ref_set,
-            fetch_entity_group,
-            current_service,
-            selection_set,
-        );
+        for (ty, sub_selection_ref_set) in selection_ref_set_group
+            .into_iter()
+            .filter(|(_, selection_ref_set)| !selection_ref_set.0.is_empty())
+        {
+            selection_ref_set.0.push(SelectionRef::InlineFragment {
+                type_condition: Some(ty),
+                selection_set: sub_selection_ref_set,
+            });
+        }
     }
 
     fn take_key_prefix(&mut self) -> usize {
@@ -1018,7 +940,7 @@ fn referenced_variables<'a>(
         variables: &'a Variables,
         variable_definitions: &'a [Positioned<VariableDefinition>],
         variables_ref: &mut VariablesRef<'a>,
-        variables_definition_ref: &mut HashMap<&'a str, &'a VariableDefinition>,
+        variables_definition_ref: &mut IndexMap<&'a str, &'a VariableDefinition>,
     ) {
         for selection in &selection_set.0 {
             match selection {
@@ -1051,7 +973,7 @@ fn referenced_variables<'a>(
     }
 
     let mut variables_ref = VariablesRef::default();
-    let mut variable_definition_ref = HashMap::new();
+    let mut variable_definition_ref = IndexMap::new();
     referenced_variables_rec(
         selection_set,
         variables,

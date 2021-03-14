@@ -1,0 +1,67 @@
+query($u1: ID!, $u2: ID!) {
+    u1: user(id: $u1) {
+        id username
+    }
+    u2: user(id: $u2) {
+        id username
+    }
+}
+---
+{
+    "u1": "user1",
+    "u2": "user2"
+}
+---
+{
+    "type": "fetch",
+    "service": "accounts",
+    "variables": {
+        "u1": "user1",
+        "u2": "user2"
+    },
+    "query": "query($u1: ID!, $u2: ID!) { u1:user(id: $u1) { id username } u2:user(id: $u2) { id username } }"
+}
+---
+fragment A on Query {
+    user(id: $id) {
+        id username
+    }
+}
+
+query($id: ID!) {
+    ... A
+}
+---
+{
+    "id": "user1"
+}
+---
+{
+    "type": "fetch",
+    "service": "accounts",
+    "variables": {
+        "id": "user1"
+    },
+    "query": "query($id: ID!) { user(id: $id) { id username } }"
+}
+---
+query($id: ID!) {
+    ... {
+        user(id: $id) {
+            id username
+        }
+    }
+}
+---
+{
+    "id": "user1"
+}
+---
+{
+    "type": "fetch",
+    "service": "accounts",
+    "variables": {
+        "id": "user1"
+    },
+    "query": "query($id: ID!) { user(id: $id) { id username } }"
+}

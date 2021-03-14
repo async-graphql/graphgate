@@ -8,6 +8,8 @@ fragment A on User {
     }
 }
 ---
+{}
+---
 {
     "type": "fetch",
     "service": "accounts",

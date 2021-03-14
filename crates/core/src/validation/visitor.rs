@@ -559,6 +559,8 @@ fn visit_selection<'a, V: Visitor<'a>>(
                 ctx.with_type(ctx.schema.types.get(name.node.as_str()), |ctx| {
                     visit_inline_fragment(v, ctx, inline_fragment)
                 });
+            } else {
+                visit_inline_fragment(v, ctx, inline_fragment)
             }
         }
     }

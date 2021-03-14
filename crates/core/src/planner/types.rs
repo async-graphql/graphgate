@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::fmt::{Display, Formatter, Result as FmtResult};
 
 use indexmap::IndexMap;
@@ -176,16 +175,11 @@ fn stringify_selection_ref_set_rec(
                 write!(f, "__typename")?;
             }
             SelectionRef::RequiredRef(require_ref) => {
-                write!(
-                    f,
-                    "... {{ __key{}___typename:__typename",
-                    require_ref.prefix,
-                )?;
+                write!(f, "__key{}___typename:__typename", require_ref.prefix,)?;
                 stringify_key_fields(f, require_ref.prefix, &require_ref.fields)?;
                 if let Some(requires) = require_ref.requires {
                     stringify_key_fields(f, require_ref.prefix, &requires)?;
                 }
-                write!(f, " }}")?;
             }
             SelectionRef::InlineFragment {
                 type_condition,
@@ -323,7 +317,7 @@ impl<'a> Display for VariableDefinitionsRef<'a> {
 #[derive(Debug, Default, Serialize)]
 #[serde(transparent)]
 pub struct VariablesRef<'a> {
-    pub variables: HashMap<&'a str, &'a ConstValue>,
+    pub variables: IndexMap<&'a str, &'a ConstValue>,
 }
 
 impl<'a> VariablesRef<'a> {

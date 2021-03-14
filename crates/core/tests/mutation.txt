@@ -19,6 +19,8 @@ mutation {
     }
 }
 ---
+{}
+---
 {
     "type": "sequence",
     "nodes": [
