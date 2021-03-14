@@ -892,7 +892,7 @@ dependencies = [
 
 [[package]]
 name = "graphgate"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "anyhow",
  "async-graphql",
@@ -919,7 +919,7 @@ dependencies = [
 
 [[package]]
 name = "graphgate-core"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "anyhow",
  "async-graphql-parser",
