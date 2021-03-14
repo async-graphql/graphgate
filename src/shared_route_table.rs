@@ -2,7 +2,8 @@ use std::sync::Arc;
 
 use anyhow::{Context, Error, Result};
 use graphgate_core::{
-    ComposedSchema, Executor, PlanBuilder, Request, Response, ServerError, ServiceRouteTable,
+    ComposedSchema, Executor, HttpFetcher, PlanBuilder, Request, Response, ServerError,
+    ServiceRouteTable,
 };
 use serde::Deserialize;
 use tokio::sync::{mpsc, Mutex};
@@ -168,10 +169,11 @@ impl SharedRouteTable {
             }
         };
 
-        let executor = Executor::new(&composed_schema, &*route_table).with_headers(&header_map);
+        let fetcher = HttpFetcher::new(&*route_table, &header_map);
+        let executor = Executor::new(&composed_schema);
         HttpResponse::builder()
             .status(StatusCode::OK)
-            .body(serde_json::to_string(&executor.execute(&plan).await).unwrap())
+            .body(serde_json::to_string(&executor.execute(&fetcher, &plan).await).unwrap())
             .unwrap()
     }
 }

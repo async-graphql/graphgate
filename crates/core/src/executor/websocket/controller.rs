@@ -14,7 +14,7 @@ use tokio_tungstenite::{MaybeTlsStream, WebSocketStream};
 
 use super::grouped_stream::{GroupedStream, StreamEvent};
 use super::protocol::{ClientMessage, Protocols, ServerMessage};
-use crate::executor::ServiceRoute;
+use crate::executor::router_table::ServiceRoute;
 use crate::{Request, Response, ServiceRouteTable};
 
 const CONNECT_TIMEOUT_SECONDS: u64 = 5;

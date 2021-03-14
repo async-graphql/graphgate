@@ -1,16 +1,14 @@
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::Arc;
 
 use anyhow::Result;
 use http::HeaderMap;
 use tokio::sync::mpsc;
 
-use super::router_table::ServiceRouteTable;
 use super::websocket::WebSocketController;
 use crate::{Request, Response, ServiceRouteTable};
 
 #[async_trait::async_trait]
-pub trait Fetcher {
+pub trait Fetcher: Send + Sync {
     async fn query(&self, service: &str, request: Request) -> Result<Response>;
 }
 
@@ -55,10 +53,12 @@ impl WebSocketFetcher {
 impl Fetcher for WebSocketFetcher {
     async fn query(&self, service: &str, request: Request) -> Result<Response> {
         let id = self.id.fetch_add(1, Ordering::Relaxed);
-        let (tx, rx) = mpsc::unbounded_channel();
+        let (tx, mut rx) = mpsc::unbounded_channel();
         self.controller
             .subscribe(format!("__req{}", id), service, request, tx)
             .await?;
-        rx.await.map_err(|_| anyhow::bail!("Connection closed."))?
+        rx.recv()
+            .await
+            .ok_or_else(|| anyhow::anyhow!("Connection closed."))
     }
 }

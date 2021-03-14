@@ -7,8 +7,8 @@ mod utils;
 mod validation;
 
 pub use executor::{
-    server as websocket_server, Executor, Protocols as WebSocketProtocols, ServiceRoute,
-    ServiceRouteTable,
+    server as websocket_server, Executor, Fetcher, HttpFetcher, Protocols as WebSocketProtocols,
+    ServiceRoute, ServiceRouteTable, WebSocketFetcher,
 };
 pub use planner::PlanBuilder;
 pub use request::Request;

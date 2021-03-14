@@ -3,8 +3,7 @@ mod introspection;
 mod router_table;
 mod websocket;
 
-use std::collections::{BTreeMap, HashMap};
-use std::ops::{Deref, DerefMut};
+use std::collections::BTreeMap;
 
 use futures_util::future::BoxFuture;
 use futures_util::stream::BoxStream;
@@ -13,9 +12,9 @@ use spin::Mutex;
 use tokio::sync::mpsc;
 use tracing::instrument;
 use value::{ConstValue, Name, Variables};
-use warp::http::HeaderMap;
 
 use introspection::{IntrospectionRoot, Resolver};
+pub use router_table::{ServiceRoute, ServiceRouteTable};
 use websocket::WebSocketController;
 pub use websocket::{server, Protocols};
 
@@ -24,7 +23,7 @@ use crate::planner::{
     SubscribeNode,
 };
 use crate::{ComposedSchema, Request, Response, ServerError};
-use fetcher::Fetcher;
+pub use fetcher::{Fetcher, HttpFetcher, WebSocketFetcher};
 
 /// Query plan executor
 pub struct Executor<'e> {
@@ -55,9 +54,11 @@ impl<'e> Executor<'e> {
         id: &str,
         node: &'a SubscribeNode<'e>,
     ) -> BoxStream<'a, Response> {
+        let fetcher = WebSocketFetcher::new(ws_controller.clone());
+
         match node {
             SubscribeNode::Query(node) => Box::pin(async_stream::stream! {
-                yield self.execute(node).await
+                yield self.execute(&fetcher, node).await
             }),
             SubscribeNode::Subscribe {
                 subscribe_nodes: fetch_nodes,
@@ -93,7 +94,7 @@ impl<'e> Executor<'e> {
                     while let Some(response) = rx.recv().await {
                         if let Some(query_nodes) = query_nodes {
                             *self.resp.lock() = response;
-                            self.execute_node(query_nodes).await;
+                            self.execute_node(&fetcher, query_nodes).await;
                             yield std::mem::take(&mut *self.resp.lock());
                         } else {
                             yield response;
@@ -106,7 +107,7 @@ impl<'e> Executor<'e> {
 
     fn execute_node<'a>(
         &'a self,
-        fetcher: &impl Fetcher,
+        fetcher: &'a impl Fetcher,
         node: &'a PlanNode<'_>,
     ) -> BoxFuture<'a, ()> {
         Box::pin(async move {
@@ -122,20 +123,20 @@ impl<'e> Executor<'e> {
         })
     }
 
-    #[instrument(skip(self), level = "debug")]
+    #[instrument(skip(self, fetcher), level = "debug")]
     async fn execute_sequence_node(&self, fetcher: &impl Fetcher, sequence: &SequenceNode<'_>) {
         for node in &sequence.nodes {
-            self.execute_node(node).await;
+            self.execute_node(fetcher, node).await;
         }
     }
 
-    #[instrument(skip(self), level = "debug")]
+    #[instrument(skip(self, fetcher), level = "debug")]
     async fn execute_parallel_node(&self, fetcher: &impl Fetcher, parallel: &ParallelNode<'_>) {
         futures_util::future::join_all(
             parallel
                 .nodes
                 .iter()
-                .map(|node| async move { self.execute_node(node).await }),
+                .map(|node| async move { self.execute_node(fetcher, node).await }),
         )
         .await;
     }
@@ -147,14 +148,11 @@ impl<'e> Executor<'e> {
         merge_data(&mut current_resp.data, value);
     }
 
-    #[instrument(skip(self), level = "debug")]
+    #[instrument(skip(self, fetcher), level = "debug")]
     async fn execute_fetch_node(&self, fetcher: &impl Fetcher, fetch: &FetchNode<'_>) {
         let request = fetch.to_request();
         tracing::debug!(service = fetch.service, request = ?request, "Query");
-        let res = self
-            .route_table
-            .query(fetch.service, request, self.headers_map)
-            .await;
+        let res = fetcher.query(fetch.service, request).await;
         let mut current_resp = self.resp.lock();
 
         match res {
@@ -172,7 +170,7 @@ impl<'e> Executor<'e> {
         }
     }
 
-    #[instrument(skip(self), level = "debug")]
+    #[instrument(skip(self, fetcher), level = "debug")]
     async fn execute_flatten_node(&self, fetcher: &impl Fetcher, flatten: &FlattenNode<'_>) {
         enum Representation {
             Keys(ConstValue),
@@ -354,10 +352,7 @@ impl<'e> Executor<'e> {
 
         let request = flatten.to_request(representations);
         tracing::debug!(service = flatten.service, request = ?request, "Query");
-        let res = self
-            .route_table
-            .query(flatten.service, request, self.headers_map)
-            .await;
+        let res = fetcher.query(flatten.service, request).await;
         let current_resp = &mut self.resp.lock();
 
         match res {

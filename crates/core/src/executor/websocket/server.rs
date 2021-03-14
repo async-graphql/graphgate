@@ -78,8 +78,6 @@ pub async fn server(
 
                             let id = Arc::new(id.to_string());
                             let schema = schema.clone();
-                            let route_table = route_table.clone();
-                            let header_map = header_map.clone();
                             let stream = {
                                 let id = id.clone();
                                 async_stream::stream! {
@@ -91,7 +89,7 @@ pub async fn server(
                                             return;
                                         }
                                     };
-                                    let executor = Executor::new(&schema, &route_table).with_headers(&header_map);
+                                    let executor = Executor::new(&schema);
                                     let mut stream = executor.execute_stream(controller.clone(), &id, &node).await;
                                     while let Some(item) = stream.next().await {
                                         yield item;
