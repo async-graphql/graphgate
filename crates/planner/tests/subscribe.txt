@@ -1,0 +1,26 @@
+subscription {
+    users {
+        id username reviews {
+            body
+        }
+    }
+}
+---
+{}
+---
+{
+    "type": "subscribe",
+    "subscribeNodes": [
+        {
+            "service": "accounts",
+            "query": "subscription { users { id username __key1___typename:__typename __key1_id:id } }"
+        }
+    ],
+    "flattenNode": {
+        "type": "flatten",
+        "service": "reviews",
+        "prefix": 1,
+        "path": "users",
+        "query": "query($representations:[_Any!]!) { _entities(representations:$representations) { ... on User { reviews { body } } } }"
+    }
+}

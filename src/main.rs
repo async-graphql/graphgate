@@ -1,14 +1,17 @@
+#![forbid(unsafe_code)]
+
 mod config;
-mod graphql_filter;
 mod k8s;
 mod options;
-mod shared_route_table;
 
 use std::net::SocketAddr;
 use std::sync::Arc;
 
 use anyhow::{Context, Result};
+use futures_util::FutureExt;
+use graphgate_handler::{handler, SharedRouteTable};
 use structopt::StructOpt;
+use tokio::signal;
 use tokio::time::Duration;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
@@ -17,7 +20,6 @@ use warp::Filter;
 
 use config::Config;
 use options::Options;
-use shared_route_table::SharedRouteTable;
 
 fn init_tracing() {
     tracing_subscriber::registry()
@@ -36,13 +38,11 @@ async fn main() -> Result<()> {
 
     let options: Options = Options::from_args();
 
-    let config = Arc::new(
-        toml::from_str::<Config>(
-            &std::fs::read_to_string(&options.config)
-                .with_context(|| format!("Failed to load config file '{}'", options.config))?,
-        )
-        .with_context(|| format!("Failed to parse config file '{}'", options.config))?,
-    );
+    let config = toml::from_str::<Config>(
+        &std::fs::read_to_string(&options.config)
+            .with_context(|| format!("Failed to load config file '{}'", options.config))?,
+    )
+    .with_context(|| format!("Failed to parse config file '{}'", options.config))?;
 
     let shared_route_table = SharedRouteTable::default();
     if !config.services.is_empty() {
@@ -75,9 +75,15 @@ async fn main() -> Result<()> {
         });
     }
 
-    let graphql =
-        warp::path::end().and(graphql_filter::graphql(shared_route_table, config.clone()));
-
+    let forward_headers = Arc::new(config.forward_headers);
+    let graphql = warp::path::end().and(
+        handler::graphql_request(shared_route_table.clone(), forward_headers.clone())
+            .or(handler::graphql_websocket(
+                shared_route_table.clone(),
+                forward_headers.clone(),
+            ))
+            .or(handler::graphql_playground()),
+    );
     let health = warp::path!("health").map(|| warp::reply::json(&"healthy"));
     let routes = graphql.or(health);
 
@@ -85,7 +91,11 @@ async fn main() -> Result<()> {
         .bind
         .parse()
         .context(format!("Failed to parse bind addr '{}'", config.bind))?;
-    tracing::info!(addr = %bind_addr, "Listening");
-    warp::serve(routes).bind(bind_addr).await;
+
+    let (addr, server) =
+        warp::serve(routes).bind_with_graceful_shutdown(bind_addr, signal::ctrl_c().map(|_| ()));
+    tracing::info!(addr = %addr, "Listening");
+    server.await;
+    tracing::info!("Server shutdown");
     Ok(())
 }

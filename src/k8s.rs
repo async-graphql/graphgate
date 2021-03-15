@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use graphgate_core::{ServiceRoute, ServiceRouteTable};
+use graphgate_handler::{ServiceRoute, ServiceRouteTable};
 use k8s_openapi::api::core::v1::Service;
 use kube::api::{ListParams, ObjectMeta};
 use kube::{Api, Client};

@@ -1,0 +1,11 @@
+[package]
+name = "graphgate-schema"
+version = "0.3.1"
+authors = ["Sunli <scott_s829@163.com>"]
+edition = "2018"
+
+[dependencies]
+parser = { version = "2.5.9", package = "async-graphql-parser" }
+value = { version = "2.5.9", package = "async-graphql-value" }
+thiserror = "1.0.24"
+indexmap = { version = "1.6.2", features = ["serde-1"] }

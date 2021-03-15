@@ -1,6 +1,4 @@
-use std::collections::HashSet;
-
-use graphgate_core::{ServiceRoute, ServiceRouteTable};
+use graphgate_handler::{ServiceRoute, ServiceRouteTable};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -20,7 +18,7 @@ pub struct Config {
     pub services: Vec<ServiceConfig>,
 
     #[serde(default)]
-    pub forward_headers: HashSet<String>,
+    pub forward_headers: Vec<String>,
 }
 
 impl Config {
