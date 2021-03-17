@@ -1,6 +1,6 @@
 [package]
 name = "graphgate-schema"
-version = "0.3.1"
+version = "0.3.2"
 authors = ["Sunli <scott_s829@163.com>"]
 edition = "2018"
 
