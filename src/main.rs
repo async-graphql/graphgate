@@ -21,28 +21,42 @@ use warp::Filter;
 use config::Config;
 use options::Options;
 
-fn init_tracing() {
+fn init_tracing(config: &Config) -> Result<()> {
     tracing_subscriber::registry()
-        .with(fmt::layer().with_target(true))
+        .with(fmt::layer().compact().with_target(true))
+        .with(match &config.tracing.jaeger {
+            Some(config) => {
+                let (tracer, uninstall) = opentelemetry_jaeger::new_pipeline()
+                    .with_agent_endpoint(&config.agent_endpoint)
+                    .with_service_name(&config.service_name)
+                    .install()
+                    .context("Failed to initialize Jaeger tracer")?;
+                let opentelemetry = tracing_opentelemetry::layer().with_tracer(tracer);
+                std::mem::forget(uninstall);
+                Some(opentelemetry)
+            }
+            None => None,
+        })
         .with(
             EnvFilter::try_from_default_env()
                 .or_else(|_| EnvFilter::try_new("info"))
                 .unwrap(),
         )
         .init();
+    Ok(())
 }
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    init_tracing();
-
     let options: Options = Options::from_args();
 
     let config = toml::from_str::<Config>(
         &std::fs::read_to_string(&options.config)
-            .with_context(|| format!("Failed to load config file '{}'", options.config))?,
+            .with_context(|| format!("Failed to load config file '{}'.", options.config))?,
     )
-    .with_context(|| format!("Failed to parse config file '{}'", options.config))?;
+    .with_context(|| format!("Failed to parse config file '{}'.", options.config))?;
+    println!("{:?}", config);
+    init_tracing(&config).context("Failed to initialize tracing.")?;
 
     let shared_route_table = SharedRouteTable::default();
     if !config.services.is_empty() {

@@ -1,5 +1,4 @@
 use indexmap::IndexSet;
-use std::collections::hash_map::RandomState;
 use value::Value;
 
 pub trait ValueExt {
@@ -7,7 +6,7 @@ pub trait ValueExt {
 }
 
 impl ValueExt for Value {
-    fn referenced_variables(&self) -> IndexSet<&str, RandomState> {
+    fn referenced_variables(&self) -> IndexSet<&str> {
         pub fn referenced_variables_to_set<'a>(value: &'a Value, vars: &mut IndexSet<&'a str>) {
             match value {
                 Value::Variable(name) => {

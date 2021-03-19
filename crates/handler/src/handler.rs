@@ -6,6 +6,7 @@ use std::sync::Arc;
 use graphgate_planner::Request;
 use http::header::HeaderName;
 use http::HeaderMap;
+use tracing::Instrument;
 use warp::http::Response as HttpResponse;
 use warp::ws::Ws;
 use warp::{Filter, Rejection, Reply};
@@ -46,14 +47,18 @@ pub fn graphql_request(
                 let shared_route_table = shared_route_table.clone();
                 let forward_headers = forward_headers.clone();
                 async move {
-                    Ok::<_, Infallible>(
-                        shared_route_table
-                            .query(
-                                request,
-                                do_forward_headers(&forward_headers, &header_map, remote_addr),
-                            )
-                            .await,
-                    )
+                    let span = tracing::info_span!(
+                        "Execute query",
+                        query = %request.query,
+                    );
+                    let resp = shared_route_table
+                        .query(
+                            request,
+                            do_forward_headers(&forward_headers, &header_map, remote_addr),
+                        )
+                        .instrument(span)
+                        .await;
+                    Ok::<_, Infallible>(resp)
                 }
             }
         })

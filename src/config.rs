@@ -1,15 +1,7 @@
 use graphgate_handler::{ServiceRoute, ServiceRouteTable};
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct ServiceConfig {
-    pub name: String,
-    pub addr: String,
-    pub query_path: Option<String>,
-    pub subscribe_path: Option<String>,
-}
-
-#[derive(Debug, Serialize, Deserialize, Default)]
+#[derive(Debug, Deserialize)]
 pub struct Config {
     #[serde(default = "default_bind")]
     pub bind: String,
@@ -19,6 +11,29 @@ pub struct Config {
 
     #[serde(default)]
     pub forward_headers: Vec<String>,
+
+    pub tracing: TracingConfig,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct ServiceConfig {
+    pub name: String,
+    pub addr: String,
+    pub query_path: Option<String>,
+    pub subscribe_path: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct TracingConfig {
+    pub jaeger: Option<JaegerConfig>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct JaegerConfig {
+    pub agent_endpoint: String,
+
+    #[serde(default = "default_jaeger_service_name")]
+    pub service_name: String,
 }
 
 impl Config {
@@ -40,4 +55,8 @@ impl Config {
 
 fn default_bind() -> String {
     "127.0.0.1:8000".to_string()
+}
+
+fn default_jaeger_service_name() -> String {
+    "graphgate".to_string()
 }

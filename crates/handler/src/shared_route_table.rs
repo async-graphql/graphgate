@@ -12,6 +12,7 @@ use warp::http::{HeaderMap, Response as HttpResponse, StatusCode};
 use crate::executor::Executor;
 use crate::fetcher::HttpFetcher;
 use crate::service_route::ServiceRouteTable;
+use tracing::Instrument;
 
 enum Command {
     Change(ServiceRouteTable),
@@ -129,7 +130,9 @@ impl SharedRouteTable {
     }
 
     pub async fn query(&self, request: Request, header_map: HeaderMap) -> HttpResponse<String> {
-        let document = match parser::parse_query(request.query) {
+        let document = match tracing::info_span!("Parse query source")
+            .in_scope(|| parser::parse_query(&request.query))
+        {
             Ok(document) => document,
             Err(err) => {
                 return HttpResponse::builder()
@@ -160,8 +163,7 @@ impl SharedRouteTable {
         if let Some(operation) = request.operation {
             plan_builder = plan_builder.operation_name(operation);
         }
-
-        let plan = match plan_builder.plan() {
+        let plan = match tracing::info_span!("Build query plan").in_scope(|| plan_builder.plan()) {
             Ok(plan) => plan,
             Err(response) => {
                 return HttpResponse::builder()
@@ -172,16 +174,13 @@ impl SharedRouteTable {
         };
 
         let executor = Executor::new(&composed_schema);
+        let resp = executor
+            .execute_query(&HttpFetcher::new(&*route_table, &header_map), &plan)
+            .instrument(tracing::info_span!("Execute plan"))
+            .await;
         HttpResponse::builder()
             .status(StatusCode::OK)
-            .body(
-                serde_json::to_string(
-                    &executor
-                        .execute_query(&HttpFetcher::new(&*route_table, &header_map), &plan)
-                        .await,
-                )
-                .unwrap(),
-            )
+            .body(serde_json::to_string(&resp).unwrap())
             .unwrap()
     }
 }

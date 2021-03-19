@@ -1,5 +1,8 @@
 bind = "0.0.0.0:8000"
 
+[tracing.jaeger]
+agent_endpoint = "127.0.0.1:6831"
+
 [[services]]
 name = "accounts"
 addr = "127.0.0.1:8001"
@@ -11,4 +14,3 @@ addr = "127.0.0.1:8002"
 [[services]]
 name = "reviews"
 addr = "127.0.0.1:8003"
-

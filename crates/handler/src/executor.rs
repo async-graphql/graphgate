@@ -11,7 +11,7 @@ use graphgate_planner::{Request, Response, ServerError};
 use graphgate_schema::ComposedSchema;
 use spin::Mutex;
 use tokio::sync::mpsc;
-use tracing::instrument;
+use tracing::Instrument;
 use value::{ConstValue, Name, Variables};
 
 use crate::fetcher::{Fetcher, WebSocketFetcher};
@@ -128,14 +128,14 @@ impl<'e> Executor<'e> {
         })
     }
 
-    #[instrument(skip(self, fetcher), level = "debug")]
     async fn execute_sequence_node(&self, fetcher: &impl Fetcher, sequence: &SequenceNode<'_>) {
         for node in &sequence.nodes {
-            self.execute_node(fetcher, node).await;
+            self.execute_node(fetcher, node)
+                .instrument(tracing::info_span!("Execute sequence node"))
+                .await;
         }
     }
 
-    #[instrument(skip(self, fetcher), level = "debug")]
     async fn execute_parallel_node(&self, fetcher: &impl Fetcher, parallel: &ParallelNode<'_>) {
         futures_util::future::join_all(
             parallel
@@ -143,39 +143,45 @@ impl<'e> Executor<'e> {
                 .iter()
                 .map(|node| async move { self.execute_node(fetcher, node).await }),
         )
+        .instrument(tracing::info_span!("Execute parallel node"))
         .await;
     }
 
-    #[instrument(skip(self), level = "debug")]
     fn execute_introspection_node(&self, introspection: &IntrospectionNode) {
-        let value = IntrospectionRoot.resolve(&introspection.selection_set, self.schema);
+        let value = tracing::info_span!("Execute introspection node")
+            .in_scope(|| IntrospectionRoot.resolve(&introspection.selection_set, self.schema));
         let mut current_resp = self.resp.lock();
         merge_data(&mut current_resp.data, value);
     }
 
-    #[instrument(skip(self, fetcher), level = "debug")]
     async fn execute_fetch_node(&self, fetcher: &impl Fetcher, fetch: &FetchNode<'_>) {
-        let request = fetch.to_request();
-        tracing::debug!(service = fetch.service, request = ?request, "Query");
-        let res = fetcher.query(fetch.service, request).await;
-        let mut current_resp = self.resp.lock();
+        async move {
+            let request = fetch.to_request();
+            let res = fetcher.query(fetch.service, request).await;
+            let mut current_resp = self.resp.lock();
 
-        match res {
-            Ok(resp) => {
-                if resp.errors.is_empty() {
-                    merge_data(&mut current_resp.data, resp.data);
-                } else {
-                    merge_errors(&mut current_resp.errors, resp.errors);
+            match res {
+                Ok(resp) => {
+                    if resp.errors.is_empty() {
+                        merge_data(&mut current_resp.data, resp.data);
+                    } else {
+                        merge_errors(&mut current_resp.errors, resp.errors);
+                    }
                 }
+                Err(err) => current_resp.errors.push(ServerError {
+                    message: err.to_string(),
+                    locations: Default::default(),
+                }),
             }
-            Err(err) => current_resp.errors.push(ServerError {
-                message: err.to_string(),
-                locations: Default::default(),
-            }),
         }
+        .instrument(tracing::info_span!(
+            "Execute fetch node",
+            service = %fetch.service,
+            query = %fetch.query.selection_set,
+        ))
+        .await
     }
 
-    #[instrument(skip(self, fetcher), level = "debug")]
     async fn execute_flatten_node(&self, fetcher: &impl Fetcher, flatten: &FlattenNode<'_>) {
         enum Representation {
             Keys(ConstValue),
@@ -324,66 +330,74 @@ impl<'e> Executor<'e> {
             }
         }
 
-        let (representations, flags) = {
-            let mut representations = Vec::new();
-            let mut resp = self.resp.lock();
-            get_representations(
-                &mut representations,
-                &mut resp.data,
-                &flatten.path,
-                flatten.prefix,
-            );
-            if representations.is_empty() {
-                return;
-            }
-
-            let mut flags = Vec::with_capacity(representations.len());
-            let mut values = Vec::with_capacity(representations.len());
-
-            for representation in representations {
-                match representation {
-                    Representation::Keys(value) => {
-                        values.push(value);
-                        flags.push(true);
-                    }
-                    Representation::Skip => flags.push(false),
+        async move {
+            let (representations, flags) = {
+                let mut representations = Vec::new();
+                let mut resp = self.resp.lock();
+                get_representations(
+                    &mut representations,
+                    &mut resp.data,
+                    &flatten.path,
+                    flatten.prefix,
+                );
+                if representations.is_empty() {
+                    return;
                 }
-            }
 
-            let mut variables = Variables::default();
-            variables.insert(Name::new("representations"), ConstValue::List(values));
-            (variables, flags)
-        };
+                let mut flags = Vec::with_capacity(representations.len());
+                let mut values = Vec::with_capacity(representations.len());
 
-        let request = flatten.to_request(representations);
-        tracing::debug!(service = flatten.service, request = ?request, "Query");
-        let res = fetcher.query(flatten.service, request).await;
-        let current_resp = &mut self.resp.lock();
-
-        match res {
-            Ok(resp) => {
-                if resp.errors.is_empty() {
-                    if let ConstValue::Object(mut data) = resp.data {
-                        if let Some(ConstValue::List(values)) = data.remove("_entities") {
-                            flatten_values(
-                                &mut current_resp.data,
-                                &flatten.path,
-                                &mut values.into_iter().fuse(),
-                                &mut flags.into_iter().fuse(),
-                            );
+                for representation in representations {
+                    match representation {
+                        Representation::Keys(value) => {
+                            values.push(value);
+                            flags.push(true);
                         }
+                        Representation::Skip => flags.push(false),
                     }
-                } else {
-                    merge_errors(&mut current_resp.errors, resp.errors);
                 }
-            }
-            Err(err) => {
-                current_resp.errors.push(ServerError {
-                    message: err.to_string(),
-                    locations: Default::default(),
-                });
+
+                let mut variables = Variables::default();
+                variables.insert(Name::new("representations"), ConstValue::List(values));
+                (variables, flags)
+            };
+
+            let request = flatten.to_request(representations);
+            let res = fetcher.query(flatten.service, request).await;
+            let current_resp = &mut self.resp.lock();
+
+            match res {
+                Ok(resp) => {
+                    if resp.errors.is_empty() {
+                        if let ConstValue::Object(mut data) = resp.data {
+                            if let Some(ConstValue::List(values)) = data.remove("_entities") {
+                                flatten_values(
+                                    &mut current_resp.data,
+                                    &flatten.path,
+                                    &mut values.into_iter().fuse(),
+                                    &mut flags.into_iter().fuse(),
+                                );
+                            }
+                        }
+                    } else {
+                        merge_errors(&mut current_resp.errors, resp.errors);
+                    }
+                }
+                Err(err) => {
+                    current_resp.errors.push(ServerError {
+                        message: err.to_string(),
+                        locations: Default::default(),
+                    });
+                }
             }
         }
+        .instrument(tracing::info_span!(
+            "Execute flatten node",
+            service = flatten.service,
+            path = %flatten.path,
+            query = %flatten.query.selection_set,
+        ))
+        .await
     }
 }
 
