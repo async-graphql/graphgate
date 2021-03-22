@@ -24,7 +24,7 @@ use config::Config;
 use graphgate_handler::handler::HandlerConfig;
 use options::Options;
 
-fn init_tracing() -> Result<()> {
+fn init_tracing() {
     tracing_subscriber::registry()
         .with(fmt::layer().compact().with_target(true))
         .with(
@@ -33,19 +33,18 @@ fn init_tracing() -> Result<()> {
                 .unwrap(),
         )
         .init();
-    Ok(())
 }
 
 #[tokio::main]
 async fn main() -> Result<()> {
     let options: Options = Options::from_args();
+    init_tracing();
 
     let config = toml::from_str::<Config>(
         &std::fs::read_to_string(&options.config)
             .with_context(|| format!("Failed to load config file '{}'.", options.config))?,
     )
     .with_context(|| format!("Failed to parse config file '{}'.", options.config))?;
-    init_tracing().context("Failed to initialize tracing.")?;
 
     let _uninstall = match &config.tracing.jaeger {
         Some(config) => {

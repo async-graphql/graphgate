@@ -529,15 +529,15 @@ fn add_tracing_spans(response: &mut Response) {
         match segments.split_last() {
             Some((last, parents)) => {
                 let mut full_path = String::new();
-                for (idx, p) in parents.into_iter().enumerate() {
+                for (idx, p) in parents.iter().enumerate() {
                     if idx > 0 {
-                        full_path.push_str(".");
+                        full_path.push('.');
                     }
                     write_path(&mut full_path, p);
                 }
                 let parent_end = full_path.len();
                 if !full_path.is_empty() {
-                    full_path.push_str(".");
+                    full_path.push('.');
                 }
                 write_path(&mut full_path, last);
                 Ok(Path {
