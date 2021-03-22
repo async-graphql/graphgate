@@ -86,7 +86,7 @@ jobs:
         package:
           - name: graphgate-schema
             registryName: graphgate-schema
-            path: graphgate-schema
+            path: crates/graphgate-schema
           - name: graphgate-validation
             registryName: graphgate-validation
             path: crates/graphgate-validation
