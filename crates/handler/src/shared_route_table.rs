@@ -6,13 +6,13 @@ use graphgate_schema::ComposedSchema;
 use serde::Deserialize;
 use tokio::sync::{mpsc, Mutex};
 use tokio::time::{Duration, Instant};
+use tracing::Instrument;
 use value::ConstValue;
 use warp::http::{HeaderMap, Response as HttpResponse, StatusCode};
 
 use crate::executor::Executor;
 use crate::fetcher::HttpFetcher;
 use crate::service_route::ServiceRouteTable;
-use tracing::Instrument;
 
 enum Command {
     Change(ServiceRouteTable),
@@ -151,6 +151,7 @@ impl SharedRouteTable {
                         serde_json::to_string(&Response {
                             data: ConstValue::Null,
                             errors: vec![ServerError::new("Not ready.")],
+                            extensions: Default::default(),
                         })
                         .unwrap(),
                     )

@@ -69,6 +69,7 @@ impl<'a> PlanBuilder<'a> {
                         locations: err.locations,
                     })
                     .collect(),
+                extensions: Default::default(),
             });
         }
         Ok(())

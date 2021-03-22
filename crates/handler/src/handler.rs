@@ -6,12 +6,17 @@ use std::sync::Arc;
 use graphgate_planner::Request;
 use http::header::HeaderName;
 use http::HeaderMap;
-use tracing::Instrument;
 use warp::http::Response as HttpResponse;
 use warp::ws::Ws;
 use warp::{Filter, Rejection, Reply};
 
 use crate::{websocket, SharedRouteTable};
+
+#[derive(Clone)]
+pub struct HandlerConfig {
+    pub shared_route_table: SharedRouteTable,
+    pub forward_headers: Arc<Vec<String>>,
+}
 
 fn do_forward_headers<T: AsRef<str>>(
     forward_headers: &[T],
@@ -35,8 +40,7 @@ fn do_forward_headers<T: AsRef<str>>(
 }
 
 pub fn graphql_request(
-    shared_route_table: SharedRouteTable,
-    forward_headers: Arc<Vec<String>>,
+    config: HandlerConfig,
 ) -> impl Filter<Extract = (impl Reply,), Error = Rejection> + Clone {
     warp::post()
         .and(warp::body::json())
@@ -44,19 +48,14 @@ pub fn graphql_request(
         .and(warp::addr::remote())
         .and_then({
             move |request: Request, header_map: HeaderMap, remote_addr: Option<SocketAddr>| {
-                let shared_route_table = shared_route_table.clone();
-                let forward_headers = forward_headers.clone();
+                let config = config.clone();
                 async move {
-                    let span = tracing::info_span!(
-                        "Execute query",
-                        query = %request.query,
-                    );
-                    let resp = shared_route_table
+                    let resp = config
+                        .shared_route_table
                         .query(
                             request,
-                            do_forward_headers(&forward_headers, &header_map, remote_addr),
+                            do_forward_headers(&config.forward_headers, &header_map, remote_addr),
                         )
-                        .instrument(span)
                         .await;
                     Ok::<_, Infallible>(resp)
                 }
@@ -65,8 +64,7 @@ pub fn graphql_request(
 }
 
 pub fn graphql_websocket(
-    shared_route_table: SharedRouteTable,
-    forward_headers: Arc<Vec<String>>,
+    config: HandlerConfig,
 ) -> impl Filter<Extract = (impl Reply,), Error = Rejection> + Clone {
     warp::ws()
         .and(warp::get())
@@ -76,8 +74,7 @@ pub fn graphql_websocket(
         .and(warp::addr::remote())
         .map({
             move |ws: Ws, protocols: Option<String>, header_map, remote_addr: Option<SocketAddr>| {
-                let shared_route_table = shared_route_table.clone();
-                let forward_headers = forward_headers.clone();
+                let config = config.clone();
                 let protocol = protocols
                     .and_then(|protocols| {
                         protocols
@@ -85,10 +82,13 @@ pub fn graphql_websocket(
                             .find_map(|p| websocket::Protocols::from_str(p.trim()).ok())
                     })
                     .unwrap_or(websocket::Protocols::SubscriptionsTransportWS);
-                let header_map = do_forward_headers(&forward_headers, &header_map, remote_addr);
+                let header_map =
+                    do_forward_headers(&config.forward_headers, &header_map, remote_addr);
 
                 let reply = ws.on_upgrade(move |websocket| async move {
-                    if let Some((composed_schema, route_table)) = shared_route_table.get().await {
+                    if let Some((composed_schema, route_table)) =
+                        config.shared_route_table.get().await
+                    {
                         websocket::server(
                             composed_schema,
                             route_table,

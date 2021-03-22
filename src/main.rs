@@ -10,6 +10,8 @@ use std::sync::Arc;
 use anyhow::{Context, Result};
 use futures_util::FutureExt;
 use graphgate_handler::{handler, SharedRouteTable};
+use opentelemetry::global;
+use opentelemetry::trace::NoopTracerProvider;
 use structopt::StructOpt;
 use tokio::signal;
 use tokio::time::Duration;
@@ -19,24 +21,12 @@ use tracing_subscriber::{fmt, EnvFilter};
 use warp::Filter;
 
 use config::Config;
+use graphgate_handler::handler::HandlerConfig;
 use options::Options;
 
-fn init_tracing(config: &Config) -> Result<()> {
+fn init_tracing() -> Result<()> {
     tracing_subscriber::registry()
         .with(fmt::layer().compact().with_target(true))
-        .with(match &config.tracing.jaeger {
-            Some(config) => {
-                let (tracer, uninstall) = opentelemetry_jaeger::new_pipeline()
-                    .with_agent_endpoint(&config.agent_endpoint)
-                    .with_service_name(&config.service_name)
-                    .install()
-                    .context("Failed to initialize Jaeger tracer")?;
-                let opentelemetry = tracing_opentelemetry::layer().with_tracer(tracer);
-                std::mem::forget(uninstall);
-                Some(opentelemetry)
-            }
-            None => None,
-        })
         .with(
             EnvFilter::try_from_default_env()
                 .or_else(|_| EnvFilter::try_new("info"))
@@ -55,8 +45,22 @@ async fn main() -> Result<()> {
             .with_context(|| format!("Failed to load config file '{}'.", options.config))?,
     )
     .with_context(|| format!("Failed to parse config file '{}'.", options.config))?;
-    println!("{:?}", config);
-    init_tracing(&config).context("Failed to initialize tracing.")?;
+    init_tracing().context("Failed to initialize tracing.")?;
+
+    let _uninstall = match &config.tracing.jaeger {
+        Some(config) => {
+            let provider = opentelemetry_jaeger::new_pipeline()
+                .with_agent_endpoint(&config.agent_endpoint)
+                .with_service_name(&config.service_name)
+                .build()
+                .context("Failed to initialize jaeger.")?;
+            global::set_tracer_provider(provider)
+        }
+        None => {
+            let provider = NoopTracerProvider::new();
+            global::set_tracer_provider(provider)
+        }
+    };
 
     let shared_route_table = SharedRouteTable::default();
     if !config.services.is_empty() {
@@ -68,7 +72,6 @@ async fn main() -> Result<()> {
             let shared_route_table = shared_route_table.clone();
             async move {
                 let mut prev_route_table = None;
-
                 loop {
                     match k8s::find_graphql_services().await {
                         Ok(route_table) => {
@@ -89,13 +92,13 @@ async fn main() -> Result<()> {
         });
     }
 
-    let forward_headers = Arc::new(config.forward_headers);
+    let handler_config = HandlerConfig {
+        shared_route_table,
+        forward_headers: Arc::new(config.forward_headers),
+    };
     let graphql = warp::path::end().and(
-        handler::graphql_request(shared_route_table.clone(), forward_headers.clone())
-            .or(handler::graphql_websocket(
-                shared_route_table.clone(),
-                forward_headers.clone(),
-            ))
+        handler::graphql_request(handler_config.clone())
+            .or(handler::graphql_websocket(handler_config.clone()))
             .or(handler::graphql_playground()),
     );
     let health = warp::path!("health").map(|| warp::reply::json(&"healthy"));

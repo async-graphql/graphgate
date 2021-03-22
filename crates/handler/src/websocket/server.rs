@@ -69,6 +69,7 @@ pub async fn server(
                                     let resp = Response {
                                         data: ConstValue::Null,
                                         errors: vec![ServerError::new(err.to_string())],
+                                        extensions: Default::default(),
                                     };
                                     let data = ServerMessage::Data { id, payload: resp };
                                     sink.send(Message::text(serde_json::to_string(&data).unwrap())).await.ok();

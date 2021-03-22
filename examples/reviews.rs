@@ -115,6 +115,8 @@ async fn main() {
     ];
 
     let schema = Schema::build(Query, EmptyMutation, Subscription)
+        .extension(async_graphql::extensions::ApolloTracing)
+        .enable_subscription_in_federation()
         .data(reviews)
         .finish();
 

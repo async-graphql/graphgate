@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use parser::Pos;
 use serde::{Deserialize, Serialize};
 use value::ConstValue;
@@ -32,4 +34,7 @@ pub struct Response {
 
     #[serde(skip_serializing_if = "Vec::is_empty", default)]
     pub errors: Vec<ServerError>,
+
+    #[serde(default)]
+    pub extensions: HashMap<String, ConstValue>,
 }

@@ -1,5 +1,6 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 
+use chrono::{DateTime, Duration, Utc};
 use futures_util::future::BoxFuture;
 use futures_util::stream::BoxStream;
 use futures_util::StreamExt;
@@ -9,14 +10,24 @@ use graphgate_planner::{
 };
 use graphgate_planner::{Request, Response, ServerError};
 use graphgate_schema::ComposedSchema;
+use opentelemetry::trace::{FutureExt, SpanKind, TraceContextExt, Tracer};
+use opentelemetry::{global, Context, Key, KeyValue};
+use serde::{Deserialize, Deserializer};
 use spin::Mutex;
 use tokio::sync::mpsc;
-use tracing::Instrument;
 use value::{ConstValue, Name, Variables};
 
 use crate::fetcher::{Fetcher, WebSocketFetcher};
 use crate::introspection::{IntrospectionRoot, Resolver};
 use crate::websocket::WebSocketController;
+
+const KEY_SERVICE: Key = Key::from_static_str("graphgate.service");
+const KEY_QUERY: Key = Key::from_static_str("graphgate.query");
+const KEY_PATH: Key = Key::from_static_str("graphgate.path");
+const KEY_PARENT_TYPE: Key = Key::from_static_str("graphgate.parentType");
+const KEY_RETURN_TYPE: Key = Key::from_static_str("graphgate.returnType");
+const KEY_FIELD_NAME: Key = Key::from_static_str("graphgate.fieldName");
+const KEY_VARIABLES: Key = Key::from_static_str("graphgate.variables");
 
 /// Query plan executor
 pub struct Executor<'e> {
@@ -36,9 +47,16 @@ impl<'e> Executor<'e> {
     ///
     /// Only `Query` and `Mutation` operations are supported.
     pub async fn execute_query(self, fetcher: &impl Fetcher, node: &RootNode<'_>) -> Response {
+        let tracer = global::tracer("graphql");
+        let span = tracer
+            .span_builder("execute")
+            .with_kind(SpanKind::Server)
+            .start(&tracer);
+        let cx = Context::current_with_span(span);
+
         match node {
             RootNode::Query(node) => {
-                self.execute_node(fetcher, node).await;
+                self.execute_node(fetcher, node).with_context(cx).await;
                 self.resp.into_inner()
             }
             RootNode::Subscribe(_) => Response {
@@ -47,6 +65,7 @@ impl<'e> Executor<'e> {
                     message: "Not supported".to_string(),
                     locations: Default::default(),
                 }],
+                extensions: Default::default(),
             },
         }
     }
@@ -90,6 +109,7 @@ impl<'e> Executor<'e> {
                                 message: err.to_string(),
                                 locations: Default::default(),
                             }],
+                            extensions: Default::default(),
                         }
                     })
                     .boxed();
@@ -130,9 +150,7 @@ impl<'e> Executor<'e> {
 
     async fn execute_sequence_node(&self, fetcher: &impl Fetcher, sequence: &SequenceNode<'_>) {
         for node in &sequence.nodes {
-            self.execute_node(fetcher, node)
-                .instrument(tracing::info_span!("Execute sequence node"))
-                .await;
+            self.execute_node(fetcher, node).await;
         }
     }
 
@@ -143,7 +161,6 @@ impl<'e> Executor<'e> {
                 .iter()
                 .map(|node| async move { self.execute_node(fetcher, node).await }),
         )
-        .instrument(tracing::info_span!("Execute parallel node"))
         .await;
     }
 
@@ -155,14 +172,31 @@ impl<'e> Executor<'e> {
     }
 
     async fn execute_fetch_node(&self, fetcher: &impl Fetcher, fetch: &FetchNode<'_>) {
+        let request = fetch.to_request();
+
+        let tracer = global::tracer("graphql");
+        let span = tracer
+            .span_builder(&format!("fetch [{}]", fetch.service))
+            .with_kind(SpanKind::Server)
+            .with_attributes(vec![
+                KeyValue::new(KEY_SERVICE, fetch.service.to_string()),
+                KeyValue::new(KEY_QUERY, fetch.query.to_string()),
+                KeyValue::new(
+                    KEY_VARIABLES,
+                    serde_json::to_string(&request.variables).unwrap(),
+                ),
+            ])
+            .start(&tracer);
+        let cx = Context::current_with_span(span);
+
         async move {
-            let request = fetch.to_request();
             let res = fetcher.query(fetch.service, request).await;
             let mut current_resp = self.resp.lock();
 
             match res {
-                Ok(resp) => {
+                Ok(mut resp) => {
                     if resp.errors.is_empty() {
+                        add_tracing_spans(&mut resp);
                         merge_data(&mut current_resp.data, resp.data);
                     } else {
                         merge_errors(&mut current_resp.errors, resp.errors);
@@ -174,11 +208,7 @@ impl<'e> Executor<'e> {
                 }),
             }
         }
-        .instrument(tracing::info_span!(
-            "Execute fetch node",
-            service = %fetch.service,
-            query = %fetch.query.selection_set,
-        ))
+        .with_context(cx)
         .await
     }
 
@@ -330,45 +360,62 @@ impl<'e> Executor<'e> {
             }
         }
 
-        async move {
-            let (representations, flags) = {
-                let mut representations = Vec::new();
-                let mut resp = self.resp.lock();
-                get_representations(
-                    &mut representations,
-                    &mut resp.data,
-                    &flatten.path,
-                    flatten.prefix,
-                );
-                if representations.is_empty() {
-                    return;
-                }
+        let (representations, flags) = {
+            let mut representations = Vec::new();
+            let mut resp = self.resp.lock();
+            get_representations(
+                &mut representations,
+                &mut resp.data,
+                &flatten.path,
+                flatten.prefix,
+            );
+            if representations.is_empty() {
+                return;
+            }
 
-                let mut flags = Vec::with_capacity(representations.len());
-                let mut values = Vec::with_capacity(representations.len());
+            let mut flags = Vec::with_capacity(representations.len());
+            let mut values = Vec::with_capacity(representations.len());
 
-                for representation in representations {
-                    match representation {
-                        Representation::Keys(value) => {
-                            values.push(value);
-                            flags.push(true);
-                        }
-                        Representation::Skip => flags.push(false),
+            for representation in representations {
+                match representation {
+                    Representation::Keys(value) => {
+                        values.push(value);
+                        flags.push(true);
                     }
+                    Representation::Skip => flags.push(false),
                 }
+            }
 
-                let mut variables = Variables::default();
-                variables.insert(Name::new("representations"), ConstValue::List(values));
-                (variables, flags)
-            };
+            let mut variables = Variables::default();
+            variables.insert(Name::new("representations"), ConstValue::List(values));
+            (variables, flags)
+        };
+        let request = flatten.to_request(representations);
 
-            let request = flatten.to_request(representations);
+        let tracer = global::tracer("graphql");
+        let span = tracer
+            .span_builder(&format!("flatten [{}]", flatten.service))
+            .with_kind(SpanKind::Server)
+            .with_attributes(vec![
+                KeyValue::new(KEY_SERVICE, flatten.service.to_string()),
+                KeyValue::new(KEY_QUERY, flatten.query.to_string()),
+                KeyValue::new(
+                    KEY_VARIABLES,
+                    serde_json::to_string(&request.variables).unwrap(),
+                ),
+                KeyValue::new(KEY_PATH, flatten.path.to_string()),
+            ])
+            .start(&tracer);
+        let cx = Context::current_with_span(span);
+
+        async move {
             let res = fetcher.query(flatten.service, request).await;
             let current_resp = &mut self.resp.lock();
 
             match res {
-                Ok(resp) => {
+                Ok(mut resp) => {
                     if resp.errors.is_empty() {
+                        add_tracing_spans(&mut resp);
                         if let ConstValue::Object(mut data) = resp.data {
                             if let Some(ConstValue::List(values)) = data.remove("_entities") {
                                 flatten_values(
@@ -391,12 +438,7 @@ impl<'e> Executor<'e> {
                 }
             }
         }
-        .instrument(tracing::info_span!(
-            "Execute flatten node",
-            service = flatten.service,
-            path = %flatten.path,
-            query = %flatten.query.selection_set,
-        ))
+        .with_context(cx)
         .await
     }
 }
@@ -431,5 +473,166 @@ fn merge_errors(target: &mut Vec<ServerError>, errors: Vec<ServerError>) {
             message: err.message,
             locations: Default::default(),
         })
+    }
+}
+
+fn add_tracing_spans(response: &mut Response) {
+    #[derive(Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct TracingResult {
+        version: i32,
+        start_time: DateTime<Utc>,
+        end_time: DateTime<Utc>,
+        execution: TracingExecution,
+    }
+
+    #[derive(Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct TracingExecution {
+        resolvers: Vec<TracingResolver>,
+    }
+
+    #[derive(Default)]
+    struct Path {
+        path: String,
+        parent_end: usize,
+    }
+
+    impl Path {
+        fn full_path(&self) -> &str {
+            &self.path
+        }
+
+        fn parent_path(&self) -> &str {
+            &self.path[..self.parent_end]
+        }
+    }
+
+    fn deserialize_path<'de, D>(deserialize: D) -> Result<Path, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let segments = Vec::<ConstValue>::deserialize(deserialize)?;
+
+        fn write_path<W: std::fmt::Write>(w: &mut W, value: &ConstValue) {
+            match value {
+                ConstValue::Number(idx) => {
+                    write!(w, "{}", idx).unwrap();
+                }
+                ConstValue::String(name) => {
+                    write!(w, "{}", name).unwrap();
+                }
+                _ => {}
+            }
+        }
+
+        match segments.split_last() {
+            Some((last, parents)) => {
+                let mut full_path = String::new();
+                for (idx, p) in parents.into_iter().enumerate() {
+                    if idx > 0 {
+                        full_path.push_str(".");
+                    }
+                    write_path(&mut full_path, p);
+                }
+                let parent_end = full_path.len();
+                if !full_path.is_empty() {
+                    full_path.push_str(".");
+                }
+                write_path(&mut full_path, last);
+                Ok(Path {
+                    path: full_path,
+                    parent_end,
+                })
+            }
+            None => Ok(Path::default()),
+        }
+    }
+
+    #[derive(Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct TracingResolver {
+        #[serde(deserialize_with = "deserialize_path")]
+        path: Path,
+        field_name: String,
+        parent_type: String,
+        return_type: String,
+        start_offset: i64,
+        duration: i64,
+    }
+
+    let tracing_result = match response
+        .extensions
+        .remove("tracing")
+        .and_then(|value| value::from_value::<TracingResult>(value).ok())
+    {
+        Some(tracing_result) => tracing_result,
+        None => return,
+    };
+
+    if tracing_result.version != 1 {
+        return;
+    }
+
+    let tracer = global::tracer("graphql");
+    let _root = Context::current_with_span(
+        tracer
+            .span_builder("execute")
+            .with_start_time(tracing_result.start_time)
+            .with_end_time(tracing_result.end_time)
+            .with_kind(SpanKind::Server)
+            .start(&tracer),
+    )
+    .attach();
+
+    let mut resolvers = HashMap::<_, Context>::new();
+    for resolver in &tracing_result.execution.resolvers {
+        let attributes = vec![
+            KeyValue::new(KEY_PARENT_TYPE, resolver.parent_type.clone()),
+            KeyValue::new(KEY_RETURN_TYPE, resolver.return_type.clone()),
+            KeyValue::new(KEY_FIELD_NAME, resolver.field_name.clone()),
+        ];
+
+        match resolvers.get(resolver.path.parent_path()) {
+            Some(parent_ctx) => {
+                let current_ctx = Context::current_with_span(
+                    tracer
+                        .span_builder(resolver.path.full_path())
+                        .with_parent_context(parent_ctx.clone())
+                        .with_start_time(
+                            tracing_result.start_time
+                                + Duration::nanoseconds(resolver.start_offset),
+                        )
+                        .with_end_time(
+                            tracing_result.start_time
+                                + Duration::nanoseconds(resolver.start_offset)
+                                + Duration::nanoseconds(resolver.duration),
+                        )
+                        .with_attributes(attributes)
+                        .with_kind(SpanKind::Server)
+                        .start(&tracer),
+                );
+                resolvers.insert(resolver.path.full_path(), current_ctx);
+            }
+            None => {
+                let current_ctx = Context::current_with_span(
+                    tracer
+                        .span_builder(resolver.path.full_path())
+                        .with_start_time(
+                            tracing_result.start_time
+                                + Duration::nanoseconds(resolver.start_offset),
+                        )
+                        .with_end_time(
+                            tracing_result.start_time
+                                + Duration::nanoseconds(resolver.start_offset)
+                                + Duration::nanoseconds(resolver.duration),
+                        )
+                        .with_attributes(attributes)
+                        .with_kind(SpanKind::Server)
+                        .start(&tracer),
+                );
+                resolvers.insert(resolver.path.full_path(), current_ctx);
+            }
+        }
     }
 }

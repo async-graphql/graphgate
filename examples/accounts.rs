@@ -51,7 +51,10 @@ impl Subscription {
 
 #[tokio::main]
 async fn main() {
-    let schema = Schema::new(Query, EmptyMutation, Subscription);
+    let schema = Schema::build(Query, EmptyMutation, Subscription)
+        .extension(async_graphql::extensions::ApolloTracing)
+        .enable_subscription_in_federation()
+        .finish();
 
     warp::serve(
         graphql(schema.clone())
