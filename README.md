@@ -11,7 +11,7 @@
   </a>
 </div>
 
-GraphGate is a [Apollo Federation](https://www.apollographql.com/apollo-federation) implemented in Rust.
+GraphGate is [Apollo Federation](https://www.apollographql.com/apollo-federation) implemented in Rust.
 
 ## Quick start
 

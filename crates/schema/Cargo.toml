@@ -3,6 +3,12 @@ name = "graphgate-schema"
 version = "0.3.2"
 authors = ["Sunli <scott_s829@163.com>"]
 edition = "2018"
+description = "GraphGate is Apollo Federation implemented in Rust"
+license = "MIT/Apache-2.0"
+homepage = "https://github.com/async-graphql/graphgate"
+repository = "https://github.com/async-graphql/graphgate"
+keywords = ["gateway", "graphql", "federation"]
+readme = "README.md"
 
 [dependencies]
 parser = { version = "2.5.9", package = "async-graphql-parser" }

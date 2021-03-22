@@ -76,3 +76,50 @@ jobs:
           context: .
           file: Dockerfile-standalone-demo
           tags: scott829/graphgate-standalone-demo:latest
+
+  publish:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        package:
+          - name: graphgate-schema
+            registryName: graphgate-schema
+            path: graphgate-schema
+          - name: graphgate-validation
+            registryName: graphgate-validation
+            path: crates/graphgate-validation
+          - name: graphgate-planner
+            registryName: graphgate-planner
+            path: crates/graphgate-planner
+          - name: graphgate-handler
+            registryName: graphgate-handler
+            path: crates/graphgate-handler
+          - name: graphgate
+            registryName: graphgate
+            path: .
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+      - name: get version
+        working-directory: ${{ matrix.package.path }}
+        run: echo PACKAGE_VERSION=$(sed -nE 's/^\s*version = "(.*?)"/\1/p' Cargo.toml) >> $GITHUB_ENV
+      - name: check published version
+        run: echo PUBLISHED_VERSION=$(cargo search ${{ matrix.package.registryName }} --limit 1 | sed -nE 's/^[^"]*"//; s/".*//1p' -) >> $GITHUB_ENV
+      - name: cargo login
+        if: env.PACKAGE_VERSION != env.PUBLISHED_VERSION
+        run: cargo login ${{ secrets.CRATES_TOKEN }}
+      - name: cargo package
+        if: env.PACKAGE_VERSION != env.PUBLISHED_VERSION
+        working-directory: ${{ matrix.package.path }}
+        run: |
+          cargo package
+          echo "We will publish:" $PACKAGE_VERSION
+          echo "This is current latest:" $PUBLISHED_VERSION
+      - name: Publish ${{ matrix.package.name }}
+        if: env.PACKAGE_VERSION != env.PUBLISHED_VERSION
+        working-directory: ${{ matrix.package.path }}
+        run: |
+          echo "# Cargo Publish"
+          cargo publish --no-verify
