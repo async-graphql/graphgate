@@ -19,6 +19,8 @@ pub struct Config {
 pub struct ServiceConfig {
     pub name: String,
     pub addr: String,
+    #[serde(default)]
+    pub tls: bool,
     pub query_path: Option<String>,
     pub subscribe_path: Option<String>,
 }
@@ -39,6 +41,7 @@ impl Config {
                 service.name.clone(),
                 ServiceRoute {
                     addr: service.addr.clone(),
+                    tls: service.tls,
                     query_path: service.query_path.clone(),
                     subscribe_path: service.subscribe_path.clone(),
                 },

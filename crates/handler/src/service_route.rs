@@ -1,8 +1,12 @@
 use std::collections::HashMap;
 use std::ops::{Deref, DerefMut};
 
+use futures_util::TryFutureExt;
 use graphgate_planner::{Request, Response};
 use http::HeaderMap;
+use once_cell::sync::Lazy;
+
+static HTTP_CLIENT: Lazy<reqwest::Client> = Lazy::new(Default::default);
 
 /// Service routing information.
 #[derive(Clone, Eq, PartialEq, Debug)]
@@ -11,6 +15,9 @@ pub struct ServiceRoute {
     ///
     /// For example: 1.2.3.4:8000, example.com:8080
     pub addr: String,
+
+    /// Use TLS
+    pub tls: bool,
 
     /// GraphQL HTTP path, default is `/`.
     pub query_path: Option<String>,
@@ -51,19 +58,22 @@ impl ServiceRouteTable {
         let route = self.0.get(service).ok_or_else(|| {
             anyhow::anyhow!("Service '{}' is not defined in the routing table.", service)
         })?;
-        let url = match &route.query_path {
-            Some(path) => format!("http://{}{}", route.addr, path),
-            None => format!("http://{}", route.addr),
+        let scheme = match route.tls {
+            true => "https",
+            false => "http",
         };
-        let client = reqwest::Client::new();
-        let resp = client
+        let url = match &route.query_path {
+            Some(path) => format!("{}://{}{}", scheme, route.addr, path),
+            None => format!("{}://{}", scheme, route.addr),
+        };
+
+        let resp = HTTP_CLIENT
             .post(&url)
             .headers(header_map.cloned().unwrap_or_default())
             .json(&request)
             .send()
-            .await?
-            .error_for_status()?
-            .json::<Response>()
+            .and_then(|res| async move { res.error_for_status() })
+            .and_then(|res| res.json::<Response>())
             .await?;
         Ok(resp)
     }

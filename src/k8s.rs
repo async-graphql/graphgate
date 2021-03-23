@@ -6,6 +6,7 @@ use kube::{Api, Client};
 
 const NAMESPACE_PATH: &str = "/var/run/secrets/kubernetes.io/serviceaccount/namespace";
 const LABEL_GRAPHQL_SERVICE: &str = "graphgate.org/service";
+const ANNOTATIONS_TLS: &str = "graphgate.org/tls";
 const ANNOTATIONS_QUERY_PATH: &str = "graphgate.org/queryPath";
 const ANNOTATIONS_SUBSCRIBE_PATH: &str = "graphgate.org/subscribePath";
 
@@ -58,6 +59,7 @@ pub async fn find_graphql_services() -> Result<ServiceRouteTable> {
                 .flatten()
                 .flatten()
             {
+                let tls = get_annotation_value(&service.metadata, ANNOTATIONS_TLS).is_some();
                 let query_path = get_annotation_value(&service.metadata, ANNOTATIONS_QUERY_PATH);
                 let subscribe_path =
                     get_annotation_value(&service.metadata, ANNOTATIONS_SUBSCRIBE_PATH);
@@ -65,6 +67,7 @@ pub async fn find_graphql_services() -> Result<ServiceRouteTable> {
                     service_name.to_string(),
                     ServiceRoute {
                         addr: format!("{}:{}", host, service_port.port),
+                        tls,
                         query_path: query_path.map(ToString::to_string),
                         subscribe_path: subscribe_path.map(ToString::to_string),
                     },

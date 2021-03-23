@@ -16,7 +16,7 @@ graphgate-validation = { version = "0.4.0", path = "../validation" }
 parser = { version = "2.5.9", package = "async-graphql-parser" }
 value = { version = "2.5.9", package = "async-graphql-value" }
 indexmap = { version = "1.6.2", features = ["serde-1"] }
-serde = "1.0.124"
+serde = "1.0.125"
 
 [dev-dependencies]
 globset = "0.4.6"

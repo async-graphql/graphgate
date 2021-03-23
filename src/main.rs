@@ -56,7 +56,7 @@ async fn main() -> Result<()> {
             let provider = opentelemetry_jaeger::new_pipeline()
                 .with_agent_endpoint(&config.agent_endpoint)
                 .with_service_name(&config.service_name)
-                .build()
+                .build_batch(opentelemetry::runtime::Tokio)
                 .context("Failed to initialize jaeger.")?;
             global::set_tracer_provider(provider)
         }

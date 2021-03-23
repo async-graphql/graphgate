@@ -3,13 +3,15 @@ use std::sync::Arc;
 use anyhow::{Context, Error, Result};
 use graphgate_planner::{PlanBuilder, Request, Response, ServerError};
 use graphgate_schema::ComposedSchema;
+use opentelemetry::trace::{TraceContextExt, Tracer};
+use opentelemetry::{global, Context as OpenTelemetryContext, KeyValue};
 use serde::Deserialize;
-use tokio::sync::{mpsc, Mutex};
+use tokio::sync::{mpsc, RwLock};
 use tokio::time::{Duration, Instant};
-use tracing::Instrument;
 use value::ConstValue;
 use warp::http::{HeaderMap, Response as HttpResponse, StatusCode};
 
+use crate::constants::*;
 use crate::executor::Executor;
 use crate::fetcher::HttpFetcher;
 use crate::service_route::ServiceRouteTable;
@@ -25,7 +27,7 @@ struct Inner {
 
 #[derive(Clone)]
 pub struct SharedRouteTable {
-    inner: Arc<Mutex<Inner>>,
+    inner: Arc<RwLock<Inner>>,
     tx: mpsc::UnboundedSender<Command>,
 }
 
@@ -33,7 +35,7 @@ impl Default for SharedRouteTable {
     fn default() -> Self {
         let (tx, rx) = mpsc::unbounded_channel();
         let shared_route_table = Self {
-            inner: Arc::new(Mutex::new(Inner {
+            inner: Arc::new(RwLock::new(Inner {
                 schema: None,
                 route_table: None,
             })),
@@ -65,7 +67,7 @@ impl SharedRouteTable {
                     if let Some(command) = command {
                         match command {
                             Command::Change(route_table) => {
-                                let mut inner = self.inner.lock().await;
+                                let mut inner = self.inner.write().await;
                                 inner.route_table = Some(Arc::new(route_table));
                                 inner.schema = None;
                             }
@@ -90,7 +92,7 @@ impl SharedRouteTable {
             sdl: String,
         }
 
-        let route_table = match self.inner.lock().await.route_table.clone() {
+        let route_table = match self.inner.read().await.route_table.clone() {
             Some(route_table) => route_table,
             None => return Ok(()),
         };
@@ -102,9 +104,8 @@ impl SharedRouteTable {
                     .query(service, Request::new(QUERY_SDL), None)
                     .await
                     .with_context(|| format!("Failed to fetch SDL from '{}'.", service))?;
-                let resp: ResponseQuery = value::from_value(resp.data)
-                    .context("Failed to parse response.")
-                    .unwrap();
+                let resp: ResponseQuery =
+                    value::from_value(resp.data).context("Failed to parse response.")?;
                 let document = parser::parse_schema(resp.service.sdl)
                     .with_context(|| format!("Invalid SDL from '{}'.", service))?;
                 Ok::<_, Error>((service.to_string(), document))
@@ -113,7 +114,7 @@ impl SharedRouteTable {
         .await?;
 
         let schema = ComposedSchema::combine(resp)?;
-        self.inner.lock().await.schema = Some(Arc::new(schema));
+        self.inner.write().await.schema = Some(Arc::new(schema));
         Ok(())
     }
 
@@ -123,16 +124,16 @@ impl SharedRouteTable {
 
     pub async fn get(&self) -> Option<(Arc<ComposedSchema>, Arc<ServiceRouteTable>)> {
         let (composed_schema, route_table) = {
-            let inner = self.inner.lock().await;
+            let inner = self.inner.read().await;
             (inner.schema.clone(), inner.route_table.clone())
         };
         composed_schema.zip(route_table)
     }
 
     pub async fn query(&self, request: Request, header_map: HeaderMap) -> HttpResponse<String> {
-        let document = match tracing::info_span!("Parse query source")
-            .in_scope(|| parser::parse_query(&request.query))
-        {
+        let tracer = global::tracer("graphql");
+
+        let document = match tracer.in_span("parse", |_| parser::parse_query(&request.query)) {
             Ok(document) => document,
             Err(err) => {
                 return HttpResponse::builder()
@@ -164,7 +165,8 @@ impl SharedRouteTable {
         if let Some(operation) = request.operation {
             plan_builder = plan_builder.operation_name(operation);
         }
-        let plan = match tracing::info_span!("Build query plan").in_scope(|| plan_builder.plan()) {
+
+        let plan = match tracer.in_span("plan", |_| plan_builder.plan()) {
             Ok(plan) => plan,
             Err(response) => {
                 return HttpResponse::builder()
@@ -175,10 +177,16 @@ impl SharedRouteTable {
         };
 
         let executor = Executor::new(&composed_schema);
-        let resp = executor
-            .execute_query(&HttpFetcher::new(&*route_table, &header_map), &plan)
-            .instrument(tracing::info_span!("Execute plan"))
-            .await;
+        let resp = opentelemetry::trace::FutureExt::with_context(
+            executor.execute_query(&HttpFetcher::new(&*route_table, &header_map), &plan),
+            OpenTelemetryContext::current_with_span(
+                tracer
+                    .span_builder("execute")
+                    .with_attributes(vec![KeyValue::new(KEY_IS_PUSH, false)])
+                    .start(&tracer),
+            ),
+        )
+        .await;
         HttpResponse::builder()
             .status(StatusCode::OK)
             .body(serde_json::to_string(&resp).unwrap())

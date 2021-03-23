@@ -10,26 +10,16 @@ use graphgate_planner::{
 };
 use graphgate_planner::{Request, Response, ServerError};
 use graphgate_schema::ComposedSchema;
-use opentelemetry::trace::{FutureExt, SpanKind, TraceContextExt, Tracer};
-use opentelemetry::{global, Context, Key, KeyValue};
+use opentelemetry::trace::{FutureExt, TraceContextExt, Tracer};
+use opentelemetry::{global, Context, KeyValue};
 use serde::{Deserialize, Deserializer};
-use spin::Mutex;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, Mutex};
 use value::{ConstValue, Name, Variables};
 
+use crate::constants::*;
 use crate::fetcher::{Fetcher, WebSocketFetcher};
 use crate::introspection::{IntrospectionRoot, Resolver};
 use crate::websocket::WebSocketController;
-
-const KEY_SERVICE: Key = Key::from_static_str("graphgate.service");
-const KEY_QUERY: Key = Key::from_static_str("graphgate.query");
-const KEY_PATH: Key = Key::from_static_str("graphgate.path");
-const KEY_PARENT_TYPE: Key = Key::from_static_str("graphgate.parentType");
-const KEY_RETURN_TYPE: Key = Key::from_static_str("graphgate.returnType");
-const KEY_FIELD_NAME: Key = Key::from_static_str("graphgate.fieldName");
-const KEY_VARIABLES: Key = Key::from_static_str("graphgate.variables");
-const KEY_ERROR: Key = Key::from_static_str("graphgate.error");
-const KEY_IS_PUSH: Key = Key::from_static_str("graphgate.isPush");
 
 /// Query plan executor
 pub struct Executor<'e> {
@@ -49,17 +39,9 @@ impl<'e> Executor<'e> {
     ///
     /// Only `Query` and `Mutation` operations are supported.
     pub async fn execute_query(self, fetcher: &impl Fetcher, node: &RootNode<'_>) -> Response {
-        let tracer = global::tracer("graphql");
-        let span = tracer
-            .span_builder("execute")
-            .with_kind(SpanKind::Server)
-            .with_attributes(vec![KeyValue::new(KEY_IS_PUSH, false)])
-            .start(&tracer);
-        let cx = Context::current_with_span(span);
-
         match node {
             RootNode::Query(node) => {
-                self.execute_node(fetcher, node).with_context(cx).await;
+                self.execute_node(fetcher, node).await;
                 self.resp.into_inner()
             }
             RootNode::Subscribe(_) => Response {
@@ -92,10 +74,7 @@ impl<'e> Executor<'e> {
                 flatten_node,
             }) => {
                 let tracer = global::tracer("graphql");
-                let span = tracer
-                    .span_builder("subscribe")
-                    .with_kind(SpanKind::Server)
-                    .start(&tracer);
+                let span = tracer.start("subscribe");
                 let cx = Context::current_with_span(span);
 
                 let res = {
@@ -115,7 +94,6 @@ impl<'e> Executor<'e> {
                             ];
                             let span = tracer
                                 .span_builder(&format!("subscribe [{}]", node.service))
-                                .with_kind(SpanKind::Server)
                                 .with_attributes(attributes)
                                 .start(&tracer);
                             let cx = Context::current_with_span(span);
@@ -155,17 +133,16 @@ impl<'e> Executor<'e> {
                     Ok(mut stream) => Box::pin(async_stream::stream! {
                         while let Some(response) = stream.recv().await {
                             if let Some(flatten_node) = flatten_node {
-                                *self.resp.lock() = response;
+                                *self.resp.lock().await = response;
 
                                 let span = tracer
                                     .span_builder("execute")
-                                    .with_kind(SpanKind::Server)
                                     .with_attributes(vec![KeyValue::new(KEY_IS_PUSH, true)])
                                     .start(&tracer);
                                 let cx = Context::current_with_span(span);
                                 self.execute_node(&fetcher, flatten_node).with_context(cx).await;
 
-                                yield std::mem::take(&mut *self.resp.lock());
+                                yield std::mem::take(&mut *self.resp.lock().await);
                             } else {
                                 yield response;
                             }
@@ -190,7 +167,7 @@ impl<'e> Executor<'e> {
                 PlanNode::Sequence(sequence) => self.execute_sequence_node(fetcher, sequence).await,
                 PlanNode::Parallel(parallel) => self.execute_parallel_node(fetcher, parallel).await,
                 PlanNode::Introspection(introspection) => {
-                    self.execute_introspection_node(introspection)
+                    self.execute_introspection_node(introspection).await
                 }
                 PlanNode::Fetch(fetch) => self.execute_fetch_node(fetcher, fetch).await,
                 PlanNode::Flatten(flatten) => self.execute_flatten_node(fetcher, flatten).await,
@@ -214,10 +191,10 @@ impl<'e> Executor<'e> {
         .await;
     }
 
-    fn execute_introspection_node(&self, introspection: &IntrospectionNode) {
+    async fn execute_introspection_node(&self, introspection: &IntrospectionNode) {
         let value = tracing::info_span!("Execute introspection node")
             .in_scope(|| IntrospectionRoot.resolve(&introspection.selection_set, self.schema));
-        let mut current_resp = self.resp.lock();
+        let mut current_resp = self.resp.lock().await;
         merge_data(&mut current_resp.data, value);
     }
 
@@ -227,7 +204,6 @@ impl<'e> Executor<'e> {
         let tracer = global::tracer("graphql");
         let span = tracer
             .span_builder(&format!("fetch [{}]", fetch.service))
-            .with_kind(SpanKind::Server)
             .with_attributes(vec![
                 KeyValue::new(KEY_SERVICE, fetch.service.to_string()),
                 KeyValue::new(KEY_QUERY, fetch.query.to_string()),
@@ -241,7 +217,7 @@ impl<'e> Executor<'e> {
 
         async move {
             let res = fetcher.query(fetch.service, request).await;
-            let mut current_resp = self.resp.lock();
+            let mut current_resp = self.resp.lock().await;
 
             match res {
                 Ok(mut resp) => {
@@ -412,7 +388,7 @@ impl<'e> Executor<'e> {
 
         let (representations, flags) = {
             let mut representations = Vec::new();
-            let mut resp = self.resp.lock();
+            let mut resp = self.resp.lock().await;
             get_representations(
                 &mut representations,
                 &mut resp.data,
@@ -445,7 +421,6 @@ impl<'e> Executor<'e> {
         let tracer = global::tracer("graphql");
         let span = tracer
             .span_builder(&format!("flatten [{}]", flatten.service))
-            .with_kind(SpanKind::Server)
             .with_attributes(vec![
                 KeyValue::new(KEY_SERVICE, flatten.service.to_string()),
                 KeyValue::new(KEY_QUERY, flatten.query.to_string()),
@@ -460,7 +435,7 @@ impl<'e> Executor<'e> {
 
         async move {
             let res = fetcher.query(flatten.service, request).await;
-            let current_resp = &mut self.resp.lock();
+            let current_resp = &mut self.resp.lock().await;
 
             match res {
                 Ok(mut resp) => {
@@ -643,8 +618,7 @@ fn add_tracing_spans(response: &mut Response) {
                     + Duration::nanoseconds(resolver.start_offset)
                     + Duration::nanoseconds(resolver.duration),
             )
-            .with_attributes(attributes)
-            .with_kind(SpanKind::Server);
+            .with_attributes(attributes);
 
         if let Some(parent_cx) = resolvers.get(resolver.path.parent_path()) {
             span_builder = span_builder.with_parent_context(parent_cx.clone());

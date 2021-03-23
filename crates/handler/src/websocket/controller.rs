@@ -16,7 +16,7 @@ use tokio_tungstenite::{MaybeTlsStream, WebSocketStream};
 
 use super::grouped_stream::{GroupedStream, StreamEvent};
 use super::protocol::{ClientMessage, Protocols, ServerMessage};
-use crate::{ServiceRoute, ServiceRouteTable};
+use crate::ServiceRouteTable;
 
 const CONNECT_TIMEOUT_SECONDS: u64 = 5;
 
@@ -147,28 +147,18 @@ impl WebSocketContext {
         service: &str,
     ) -> Result<(WebSocketStream<MaybeTlsStream<TcpStream>>, Protocols)> {
         const PROTOCOLS: &str = "graphql-ws, graphql-transport-ws";
-        let url = match self.route_table.get(service) {
-            Some(ServiceRoute {
-                addr,
-                subscribe_path: Some(subscribe_path),
-                ..
-            }) => {
-                format!("ws://{}{}", addr, subscribe_path)
-            }
-            Some(ServiceRoute {
-                addr,
-                subscribe_path: None,
-                ..
-            }) => {
-                format!("ws://{}", addr)
-            }
-            None => {
-                return Err(anyhow::anyhow!(
-                    "Service '{}' is not defined in the routing table.",
-                    service
-                ));
-            }
+        let route = self.route_table.get(service).ok_or_else(|| {
+            anyhow::anyhow!("Service '{}' is not defined in the routing table.", service)
+        })?;
+        let scheme = match route.tls {
+            true => "wss",
+            false => "ws",
         };
+        let url = match &route.query_path {
+            Some(path) => format!("{}://{}{}", scheme, route.addr, path),
+            None => format!("{}://{}", scheme, route.addr),
+        };
+
         tracing::debug!(url = %url, service = service, "Connect to upstream websocket");
         let mut http_request = HttpRequest::builder()
             .uri(&url)

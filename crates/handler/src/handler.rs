@@ -6,10 +6,13 @@ use std::sync::Arc;
 use graphgate_planner::Request;
 use http::header::HeaderName;
 use http::HeaderMap;
+use opentelemetry::trace::{FutureExt, TraceContextExt, Tracer};
+use opentelemetry::{global, Context, KeyValue};
 use warp::http::Response as HttpResponse;
 use warp::ws::Ws;
 use warp::{Filter, Rejection, Reply};
 
+use crate::constants::*;
 use crate::{websocket, SharedRouteTable};
 
 #[derive(Clone)]
@@ -50,12 +53,27 @@ pub fn graphql_request(
             move |request: Request, header_map: HeaderMap, remote_addr: Option<SocketAddr>| {
                 let config = config.clone();
                 async move {
+                    let tracer = global::tracer("graphql");
+                    let query = Context::current_with_span(
+                        tracer
+                            .span_builder("query")
+                            .with_attributes(vec![
+                                KeyValue::new(KEY_QUERY, request.query.clone()),
+                                KeyValue::new(
+                                    KEY_VARIABLES,
+                                    serde_json::to_string(&request.variables).unwrap(),
+                                ),
+                            ])
+                            .start(&tracer),
+                    );
+
                     let resp = config
                         .shared_route_table
                         .query(
                             request,
                             do_forward_headers(&config.forward_headers, &header_map, remote_addr),
                         )
+                        .with_context(query)
                         .await;
                     Ok::<_, Infallible>(resp)
                 }

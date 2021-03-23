@@ -120,21 +120,19 @@ async fn main() {
         .data(reviews)
         .finish();
 
-    warp::serve(
-        graphql(schema.clone())
-            .and(warp::post())
-            .and_then(
-                |(schema, request): (
-                    Schema<Query, EmptyMutation, Subscription>,
-                    async_graphql::Request,
-                )| async move {
-                    Ok::<_, Infallible>(
-                        warp::reply::json(&schema.execute(request).await).into_response(),
-                    )
-                },
-            )
-            .or(graphql_subscription(schema)),
-    )
-    .run(([0, 0, 0, 0], 8003))
-    .await;
+    let routes = graphql(schema.clone())
+        .and(warp::post())
+        .and_then(
+            |(schema, request): (
+                Schema<Query, EmptyMutation, Subscription>,
+                async_graphql::Request,
+            )| async move {
+                Ok::<_, Infallible>(
+                    warp::reply::json(&schema.execute(request).await).into_response(),
+                )
+            },
+        )
+        .or(graphql_subscription(schema));
+
+    warp::serve(routes).run(([0, 0, 0, 0], 8003)).await;
 }
