@@ -1,11 +1,23 @@
+# Server bind address
 bind = "0.0.0.0:8000"
 
-[tracing.jaeger]
+# Forward headers to upstream services.
+forward_headers = []
+
+# Jaeger
+[jaeger]
 agent_endpoint = "127.0.0.1:6831"
+service_name = "graphgate"
+
+#######################################################
+## Services
+#######################################################
 
 [[services]]
-name = "accounts"
-addr = "127.0.0.1:8001"
+name = "accounts"               # Service name
+addr = "127.0.0.1:8001"         # Service address
+query_path = "/"                # GraphQL query endpoint, Default: /
+subscribe_path = "/"            # GraphQL subscription endpoint, Default: /
 
 [[services]]
 name = "products"

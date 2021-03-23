@@ -12,7 +12,7 @@ pub struct Config {
     #[serde(default)]
     pub forward_headers: Vec<String>,
 
-    pub tracing: TracingConfig,
+    pub jaeger: Option<JaegerConfig>,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -21,11 +21,6 @@ pub struct ServiceConfig {
     pub addr: String,
     pub query_path: Option<String>,
     pub subscribe_path: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct TracingConfig {
-    pub jaeger: Option<JaegerConfig>,
 }
 
 #[derive(Debug, Deserialize)]

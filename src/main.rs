@@ -9,6 +9,7 @@ use std::sync::Arc;
 
 use anyhow::{Context, Result};
 use futures_util::FutureExt;
+use graphgate_handler::handler::HandlerConfig;
 use graphgate_handler::{handler, SharedRouteTable};
 use opentelemetry::global;
 use opentelemetry::trace::NoopTracerProvider;
@@ -21,12 +22,11 @@ use tracing_subscriber::{fmt, EnvFilter};
 use warp::Filter;
 
 use config::Config;
-use graphgate_handler::handler::HandlerConfig;
 use options::Options;
 
 fn init_tracing() {
     tracing_subscriber::registry()
-        .with(fmt::layer().compact().with_target(true))
+        .with(fmt::layer().compact().with_target(false))
         .with(
             EnvFilter::try_from_default_env()
                 .or_else(|_| EnvFilter::try_new("info"))
@@ -46,8 +46,13 @@ async fn main() -> Result<()> {
     )
     .with_context(|| format!("Failed to parse config file '{}'.", options.config))?;
 
-    let _uninstall = match &config.tracing.jaeger {
+    let _uninstall = match &config.jaeger {
         Some(config) => {
+            tracing::info!(
+                agent_endpoint = %config.agent_endpoint,
+                service_name = %config.service_name,
+                "Initialize Jaeger"
+            );
             let provider = opentelemetry_jaeger::new_pipeline()
                 .with_agent_endpoint(&config.agent_endpoint)
                 .with_service_name(&config.service_name)
