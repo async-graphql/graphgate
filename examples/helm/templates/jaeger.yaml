@@ -9,19 +9,18 @@ spec:
     matchLabels:
       app: jaeger
   strategy:
-    type: RollingUpdate
+    type: Recreate
   template:
     metadata:
       labels:
         app: jaeger
     spec:
       containers:
-        - image: jaegertracing/all-in-one:1.22
-          imagePullPolicy: Always
+        - image: jaegertracing/all-in-one:1.22.0
           name: jaeger
-          args:
-            - 6831:6831/udp
-            - 16686:16686
+          env:
+            - name: JAEGER_AGENT_PORT
+              value: "6831"
 ---
 apiVersion: v1
 kind: Service
@@ -34,7 +33,7 @@ spec:
       nodePort: 31001
       targetPort: 16686
   selector:
-    app: graphgate
+    app: jaeger
   type: NodePort
 ---
 apiVersion: v1
@@ -43,8 +42,10 @@ metadata:
   name: jaeger-agent
 spec:
   ports:
-    - name: http
+    - name: udp
       port: 6831
+      protocol: UDP
       targetPort: 6831
   selector:
     app: jaeger
+  clusterIP: None

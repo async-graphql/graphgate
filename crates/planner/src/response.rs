@@ -35,6 +35,6 @@ pub struct Response {
     #[serde(skip_serializing_if = "Vec::is_empty", default)]
     pub errors: Vec<ServerError>,
 
-    #[serde(default)]
+    #[serde(skip_serializing_if = "HashMap::is_empty", default)]
     pub extensions: HashMap<String, ConstValue>,
 }

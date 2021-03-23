@@ -532,7 +532,6 @@ fn add_tracing_spans(response: &mut Response) {
     struct TracingResult {
         version: i32,
         start_time: DateTime<Utc>,
-        end_time: DateTime<Utc>,
         execution: TracingExecution,
     }
 
@@ -625,15 +624,6 @@ fn add_tracing_spans(response: &mut Response) {
     }
 
     let tracer = global::tracer("graphql");
-    let _root = Context::current_with_span(
-        tracer
-            .span_builder("execute")
-            .with_start_time(tracing_result.start_time)
-            .with_end_time(tracing_result.end_time)
-            .with_kind(SpanKind::Server)
-            .start(&tracer),
-    )
-    .attach();
 
     let mut resolvers = HashMap::<_, Context>::new();
     for resolver in &tracing_result.execution.resolvers {
@@ -643,46 +633,26 @@ fn add_tracing_spans(response: &mut Response) {
             KeyValue::new(KEY_FIELD_NAME, resolver.field_name.clone()),
         ];
 
-        match resolvers.get(resolver.path.parent_path()) {
-            Some(parent_ctx) => {
-                let current_ctx = Context::current_with_span(
-                    tracer
-                        .span_builder(resolver.path.full_path())
-                        .with_parent_context(parent_ctx.clone())
-                        .with_start_time(
-                            tracing_result.start_time
-                                + Duration::nanoseconds(resolver.start_offset),
-                        )
-                        .with_end_time(
-                            tracing_result.start_time
-                                + Duration::nanoseconds(resolver.start_offset)
-                                + Duration::nanoseconds(resolver.duration),
-                        )
-                        .with_attributes(attributes)
-                        .with_kind(SpanKind::Server)
-                        .start(&tracer),
-                );
-                resolvers.insert(resolver.path.full_path(), current_ctx);
-            }
-            None => {
-                let current_ctx = Context::current_with_span(
-                    tracer
-                        .span_builder(resolver.path.full_path())
-                        .with_start_time(
-                            tracing_result.start_time
-                                + Duration::nanoseconds(resolver.start_offset),
-                        )
-                        .with_end_time(
-                            tracing_result.start_time
-                                + Duration::nanoseconds(resolver.start_offset)
-                                + Duration::nanoseconds(resolver.duration),
-                        )
-                        .with_attributes(attributes)
-                        .with_kind(SpanKind::Server)
-                        .start(&tracer),
-                );
-                resolvers.insert(resolver.path.full_path(), current_ctx);
-            }
+        let mut span_builder = tracer
+            .span_builder(resolver.path.full_path())
+            .with_start_time(
+                tracing_result.start_time + Duration::nanoseconds(resolver.start_offset),
+            )
+            .with_end_time(
+                tracing_result.start_time
+                    + Duration::nanoseconds(resolver.start_offset)
+                    + Duration::nanoseconds(resolver.duration),
+            )
+            .with_attributes(attributes)
+            .with_kind(SpanKind::Server);
+
+        if let Some(parent_cx) = resolvers.get(resolver.path.parent_path()) {
+            span_builder = span_builder.with_parent_context(parent_cx.clone());
         }
+
+        resolvers.insert(
+            resolver.path.full_path(),
+            Context::current_with_span(span_builder.start(&tracer)),
+        );
     }
 }
