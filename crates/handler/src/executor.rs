@@ -28,6 +28,8 @@ const KEY_PARENT_TYPE: Key = Key::from_static_str("graphgate.parentType");
 const KEY_RETURN_TYPE: Key = Key::from_static_str("graphgate.returnType");
 const KEY_FIELD_NAME: Key = Key::from_static_str("graphgate.fieldName");
 const KEY_VARIABLES: Key = Key::from_static_str("graphgate.variables");
+const KEY_ERROR: Key = Key::from_static_str("graphgate.error");
+const KEY_IS_PUSH: Key = Key::from_static_str("graphgate.isPush");
 
 /// Query plan executor
 pub struct Executor<'e> {
@@ -51,6 +53,7 @@ impl<'e> Executor<'e> {
         let span = tracer
             .span_builder("execute")
             .with_kind(SpanKind::Server)
+            .with_attributes(vec![KeyValue::new(KEY_IS_PUSH, false)])
             .start(&tracer);
         let cx = Context::current_with_span(span);
 
@@ -88,44 +91,91 @@ impl<'e> Executor<'e> {
                 subscribe_nodes,
                 flatten_node,
             }) => {
-                let (tx, mut rx) = mpsc::unbounded_channel();
-                if let Err(err) =
-                    futures_util::future::try_join_all(subscribe_nodes.iter().map(|node| {
-                        ws_controller.subscribe(
-                            id,
-                            node.service,
-                            Request::new(node.query.to_string())
-                                .variables(node.variables.to_variables()),
-                            tx.clone(),
-                        )
-                    }))
-                    .await
-                {
-                    ws_controller.stop(id).await;
-                    return futures_util::stream::once(async move {
-                        Response {
-                            data: ConstValue::Null,
-                            errors: vec![ServerError {
-                                message: err.to_string(),
-                                locations: Default::default(),
-                            }],
-                            extensions: Default::default(),
-                        }
-                    })
-                    .boxed();
-                }
+                let tracer = global::tracer("graphql");
+                let span = tracer
+                    .span_builder("subscribe")
+                    .with_kind(SpanKind::Server)
+                    .start(&tracer);
+                let cx = Context::current_with_span(span);
 
-                Box::pin(async_stream::stream! {
-                    while let Some(response) = rx.recv().await {
-                        if let Some(query_nodes) = flatten_node {
-                            *self.resp.lock() = response;
-                            self.execute_node(&fetcher, query_nodes).await;
-                            yield std::mem::take(&mut *self.resp.lock());
-                        } else {
-                            yield response;
-                        }
+                let res = {
+                    let ws_controller = ws_controller.clone();
+                    async move {
+                        let (tx, rx) = mpsc::unbounded_channel();
+
+                        futures_util::future::try_join_all(subscribe_nodes.iter().map(|node| {
+                            let tracer = global::tracer("graphql");
+                            let attributes = vec![
+                                KeyValue::new(KEY_SERVICE, node.service.to_string()),
+                                KeyValue::new(KEY_QUERY, node.query.to_string()),
+                                KeyValue::new(
+                                    KEY_VARIABLES,
+                                    serde_json::to_string(&node.variables).unwrap(),
+                                ),
+                            ];
+                            let span = tracer
+                                .span_builder(&format!("subscribe [{}]", node.service))
+                                .with_kind(SpanKind::Server)
+                                .with_attributes(attributes)
+                                .start(&tracer);
+                            let cx = Context::current_with_span(span);
+
+                            ws_controller
+                                .subscribe(
+                                    id,
+                                    node.service,
+                                    Request::new(node.query.to_string())
+                                        .variables(node.variables.to_variables()),
+                                    tx.clone(),
+                                )
+                                .with_context(cx)
+                        }))
+                        .await
+                        .map(move |_| rx)
+                        .map_err(|err| {
+                            Context::current().span().add_event(
+                                "Failed to subscribe".to_string(),
+                                vec![KeyValue::new(KEY_ERROR, err.to_string())],
+                            );
+                            Response {
+                                data: ConstValue::Null,
+                                errors: vec![ServerError {
+                                    message: err.to_string(),
+                                    locations: Default::default(),
+                                }],
+                                extensions: Default::default(),
+                            }
+                        })
                     }
-                })
+                    .with_context(cx)
+                    .await
+                };
+
+                match res {
+                    Ok(mut stream) => Box::pin(async_stream::stream! {
+                        while let Some(response) = stream.recv().await {
+                            if let Some(flatten_node) = flatten_node {
+                                *self.resp.lock() = response;
+
+                                let span = tracer
+                                    .span_builder("execute")
+                                    .with_kind(SpanKind::Server)
+                                    .with_attributes(vec![KeyValue::new(KEY_IS_PUSH, true)])
+                                    .start(&tracer);
+                                let cx = Context::current_with_span(span);
+                                self.execute_node(&fetcher, flatten_node).with_context(cx).await;
+
+                                yield std::mem::take(&mut *self.resp.lock());
+                            } else {
+                                yield response;
+                            }
+                        }
+                    }),
+                    Err(response) => {
+                        ws_controller.stop(id).await;
+                        Box::pin(futures_util::stream::once(async move { response }).boxed())
+                    }
+                }
             }
         }
     }
