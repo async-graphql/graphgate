@@ -243,7 +243,8 @@ impl ComposedSchema {
                                 .node
                                 .description
                                 .map(|description| description.node);
-                            let is_extend = type_definition.node.extend;
+                            let is_extend =
+                                type_definition.node.extend || root_objects.contains(&&*name);
                             let meta_type = composed_schema
                                 .types
                                 .entry(name.clone())
