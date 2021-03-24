@@ -8,4 +8,3 @@ pub const KEY_RETURN_TYPE: Key = Key::from_static_str("graphgate.returnType");
 pub const KEY_FIELD_NAME: Key = Key::from_static_str("graphgate.fieldName");
 pub const KEY_VARIABLES: Key = Key::from_static_str("graphgate.variables");
 pub const KEY_ERROR: Key = Key::from_static_str("graphgate.error");
-pub const KEY_IS_PUSH: Key = Key::from_static_str("graphgate.isPush");

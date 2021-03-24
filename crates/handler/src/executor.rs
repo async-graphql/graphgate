@@ -106,7 +106,7 @@ impl<'e> Executor<'e> {
                                         .variables(node.variables.to_variables()),
                                     tx.clone(),
                                 )
-                                .with_context(cx)
+                                .with_context(cx.clone())
                         }))
                         .await
                         .map(move |_| rx)
@@ -135,10 +135,7 @@ impl<'e> Executor<'e> {
                             if let Some(flatten_node) = flatten_node {
                                 *self.resp.lock().await = response;
 
-                                let span = tracer
-                                    .span_builder("execute")
-                                    .with_attributes(vec![KeyValue::new(KEY_IS_PUSH, true)])
-                                    .start(&tracer);
+                                let span = tracer.span_builder("push").start(&tracer);
                                 let cx = Context::current_with_span(span);
                                 self.execute_node(&fetcher, flatten_node).with_context(cx).await;
 
@@ -167,7 +164,10 @@ impl<'e> Executor<'e> {
                 PlanNode::Sequence(sequence) => self.execute_sequence_node(fetcher, sequence).await,
                 PlanNode::Parallel(parallel) => self.execute_parallel_node(fetcher, parallel).await,
                 PlanNode::Introspection(introspection) => {
-                    self.execute_introspection_node(introspection).await
+                    let tracer = global::tracer("graphql");
+                    self.execute_introspection_node(introspection)
+                        .with_context(Context::current_with_span(tracer.start("introspection")))
+                        .await
                 }
                 PlanNode::Fetch(fetch) => self.execute_fetch_node(fetcher, fetch).await,
                 PlanNode::Flatten(flatten) => self.execute_flatten_node(fetcher, flatten).await,
@@ -192,8 +192,7 @@ impl<'e> Executor<'e> {
     }
 
     async fn execute_introspection_node(&self, introspection: &IntrospectionNode) {
-        let value = tracing::info_span!("Execute introspection node")
-            .in_scope(|| IntrospectionRoot.resolve(&introspection.selection_set, self.schema));
+        let value = IntrospectionRoot.resolve(&introspection.selection_set, self.schema);
         let mut current_resp = self.resp.lock().await;
         merge_data(&mut current_resp.data, value);
     }

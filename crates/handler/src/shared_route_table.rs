@@ -4,14 +4,13 @@ use anyhow::{Context, Error, Result};
 use graphgate_planner::{PlanBuilder, Request, Response, ServerError};
 use graphgate_schema::ComposedSchema;
 use opentelemetry::trace::{TraceContextExt, Tracer};
-use opentelemetry::{global, Context as OpenTelemetryContext, KeyValue};
+use opentelemetry::{global, Context as OpenTelemetryContext};
 use serde::Deserialize;
 use tokio::sync::{mpsc, RwLock};
 use tokio::time::{Duration, Instant};
 use value::ConstValue;
 use warp::http::{HeaderMap, Response as HttpResponse, StatusCode};
 
-use crate::constants::*;
 use crate::executor::Executor;
 use crate::fetcher::HttpFetcher;
 use crate::service_route::ServiceRouteTable;
@@ -179,12 +178,7 @@ impl SharedRouteTable {
         let executor = Executor::new(&composed_schema);
         let resp = opentelemetry::trace::FutureExt::with_context(
             executor.execute_query(&HttpFetcher::new(&*route_table, &header_map), &plan),
-            OpenTelemetryContext::current_with_span(
-                tracer
-                    .span_builder("execute")
-                    .with_attributes(vec![KeyValue::new(KEY_IS_PUSH, false)])
-                    .start(&tracer),
-            ),
+            OpenTelemetryContext::current_with_span(tracer.span_builder("execute").start(&tracer)),
         )
         .await;
         HttpResponse::builder()
