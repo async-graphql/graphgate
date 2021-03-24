@@ -8,6 +8,7 @@
     u2: user(id: "1234") {
         id username
     }
+    myName
 }
 ---
 {}
@@ -15,5 +16,5 @@
 {
     "type": "fetch",
     "service": "accounts",
-    "query": "query { u1:user(id: \"1234\") { id username } me { id username } u2:user(id: \"1234\") { id username } }"
+    "query": "query { u1:user(id: \"1234\") { id username } me { id username } u2:user(id: \"1234\") { id username } myName }"
 }
