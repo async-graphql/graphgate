@@ -756,7 +756,7 @@ dependencies = [
 
 [[package]]
 name = "graphgate"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "anyhow",
  "async-graphql",
@@ -780,7 +780,7 @@ dependencies = [
 
 [[package]]
 name = "graphgate-handler"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "anyhow",
  "async-graphql-parser",
@@ -807,7 +807,7 @@ dependencies = [
 
 [[package]]
 name = "graphgate-planner"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "async-graphql-parser",
  "async-graphql-value",
@@ -821,7 +821,7 @@ dependencies = [
 
 [[package]]
 name = "graphgate-schema"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "async-graphql-parser",
  "async-graphql-value",
@@ -831,7 +831,7 @@ dependencies = [
 
 [[package]]
 name = "graphgate-validation"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "async-graphql-parser",
  "async-graphql-value",

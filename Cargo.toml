@@ -1,6 +1,6 @@
 [package]
 name = "graphgate"
-version = "0.4.0"
+version = "0.5.0"
 authors = ["Sunli <scott_s829@163.com>"]
 edition = "2018"
 description = "GraphGate is Apollo Federation implemented in Rust"
@@ -11,7 +11,7 @@ keywords = ["gateway", "graphql", "federation"]
 readme = "README.md"
 
 [dependencies]
-graphgate-handler = { version = "0.4.0", path = "./crates/handler" }
+graphgate-handler = { version = "0.5.0", path = "./crates/handler" }
 
 serde = { version = "1.0.125", features = ["derive"] }
 anyhow = "1.0.39"
