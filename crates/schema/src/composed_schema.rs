@@ -654,7 +654,7 @@ fn finish_schema(composed_schema: &mut ComposedSchema) {
         match definition {
             TypeSystemDefinition::Type(type_definition) => {
                 let mut type_definition = convert_type_definition(type_definition.node);
-                type_definition.is_introspection = true;
+                type_definition.is_introspection = false;
                 composed_schema
                     .types
                     .insert(type_definition.name.clone(), type_definition);
