@@ -34,6 +34,10 @@ fastrand = "1.4.0"
 async-stream = "0.3.0"
 futures-util = "0.3.13"
 
+[[example]]
+name = "builtin_scalar_bug"
+path = "./examples/builtin_scalar_bug/bug.rs"
+
 [workspace]
 members = [
     "crates/schema",

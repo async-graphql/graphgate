@@ -1,0 +1,5 @@
+bind = "0.0.0.0:8000"
+
+[[services]]
+name = "builtin_scalar_bug"
+addr = "127.0.0.1:8001"
