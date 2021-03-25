@@ -30,5 +30,5 @@ serde = "1.0.125"
 serde_json = "1.0.64"
 reqwest = { version = "0.11.2", default-features = false, features = ["native-tls", "gzip", "brotli", "json"] }
 async-trait = "0.1.48"
-opentelemetry = "0.13.0"
+opentelemetry = { version = "0.13.0", features = ["metrics"] }
 chrono = { version = "0.4.19", features = ["serde"] }

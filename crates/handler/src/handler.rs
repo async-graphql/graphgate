@@ -7,13 +7,15 @@ use graphgate_planner::Request;
 use http::header::HeaderName;
 use http::HeaderMap;
 use opentelemetry::trace::{FutureExt, TraceContextExt, Tracer};
-use opentelemetry::{global, Context, KeyValue};
+use opentelemetry::{global, Context};
 use warp::http::Response as HttpResponse;
 use warp::ws::Ws;
 use warp::{Filter, Rejection, Reply};
 
 use crate::constants::*;
+use crate::metrics::METRICS;
 use crate::{websocket, SharedRouteTable};
+use std::time::Instant;
 
 #[derive(Clone)]
 pub struct HandlerConfig {
@@ -54,19 +56,19 @@ pub fn graphql_request(
                 let config = config.clone();
                 async move {
                     let tracer = global::tracer("graphql");
+
                     let query = Context::current_with_span(
                         tracer
                             .span_builder("query")
                             .with_attributes(vec![
-                                KeyValue::new(KEY_QUERY, request.query.clone()),
-                                KeyValue::new(
-                                    KEY_VARIABLES,
-                                    serde_json::to_string(&request.variables).unwrap(),
-                                ),
+                                KEY_QUERY.string(request.query.clone()),
+                                KEY_VARIABLES
+                                    .string(serde_json::to_string(&request.variables).unwrap()),
                             ])
                             .start(&tracer),
                     );
 
+                    let start_time = Instant::now();
                     let resp = config
                         .shared_route_table
                         .query(
@@ -75,6 +77,12 @@ pub fn graphql_request(
                         )
                         .with_context(query)
                         .await;
+
+                    METRICS
+                        .query_histogram
+                        .record((Instant::now() - start_time).as_secs_f64());
+                    METRICS.query_counter.add(1);
+
                     Ok::<_, Infallible>(resp)
                 }
             }

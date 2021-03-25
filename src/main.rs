@@ -12,14 +12,19 @@ use futures_util::FutureExt;
 use graphgate_handler::handler::HandlerConfig;
 use graphgate_handler::{handler, SharedRouteTable};
 use opentelemetry::global;
+use opentelemetry::global::GlobalTracerProvider;
 use opentelemetry::trace::NoopTracerProvider;
+use opentelemetry_prometheus::PrometheusExporter;
+use prometheus::{Encoder, TextEncoder};
 use structopt::StructOpt;
 use tokio::signal;
 use tokio::time::Duration;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::{fmt, EnvFilter};
-use warp::Filter;
+use warp::http::Response as HttpResponse;
+use warp::hyper::StatusCode;
+use warp::{Filter, Rejection, Reply};
 
 use config::Config;
 use options::Options;
@@ -35,18 +40,28 @@ fn init_tracing() {
         .init();
 }
 
-#[tokio::main]
-async fn main() -> Result<()> {
-    let options: Options = Options::from_args();
-    init_tracing();
+async fn update_route_table_in_k8s(shared_route_table: SharedRouteTable) {
+    let mut prev_route_table = None;
+    loop {
+        match k8s::find_graphql_services().await {
+            Ok(route_table) => {
+                if Some(&route_table) != prev_route_table.as_ref() {
+                    tracing::info!(route_table = ?route_table, "Route table updated.");
+                    shared_route_table.set_route_table(route_table.clone());
+                    prev_route_table = Some(route_table);
+                }
+            }
+            Err(err) => {
+                tracing::error!(error = %err, "Failed to find graphql services.");
+            }
+        }
 
-    let config = toml::from_str::<Config>(
-        &std::fs::read_to_string(&options.config)
-            .with_context(|| format!("Failed to load config file '{}'.", options.config))?,
-    )
-    .with_context(|| format!("Failed to parse config file '{}'.", options.config))?;
+        tokio::time::sleep(Duration::from_secs(30)).await;
+    }
+}
 
-    let _uninstall = match &config.jaeger {
+fn init_tracer(config: &Config) -> Result<GlobalTracerProvider> {
+    let uninstall = match &config.jaeger {
         Some(config) => {
             tracing::info!(
                 agent_endpoint = %config.agent_endpoint,
@@ -65,48 +80,68 @@ async fn main() -> Result<()> {
             global::set_tracer_provider(provider)
         }
     };
+    Ok(uninstall)
+}
+
+pub fn metrics(
+    exporter: PrometheusExporter,
+) -> impl Filter<Extract = (impl Reply,), Error = Rejection> + Clone {
+    warp::path!("metrics").and(warp::get()).map({
+        move || {
+            let mut buffer = Vec::new();
+            let encoder = TextEncoder::new();
+            let metric_families = exporter.registry().gather();
+            if let Err(err) = encoder.encode(&metric_families, &mut buffer) {
+                return HttpResponse::builder()
+                    .status(StatusCode::INTERNAL_SERVER_ERROR)
+                    .body(err.to_string().into_bytes())
+                    .unwrap();
+            }
+            HttpResponse::builder()
+                .status(StatusCode::OK)
+                .body(buffer)
+                .unwrap()
+        }
+    })
+}
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    let options: Options = Options::from_args();
+    init_tracing();
+
+    let config = toml::from_str::<Config>(
+        &std::fs::read_to_string(&options.config)
+            .with_context(|| format!("Failed to load config file '{}'.", options.config))?,
+    )
+    .with_context(|| format!("Failed to parse config file '{}'.", options.config))?;
+    let _uninstall = init_tracer(&config)?;
+    let exporter = opentelemetry_prometheus::exporter().init();
 
     let shared_route_table = SharedRouteTable::default();
     if !config.services.is_empty() {
-        tracing::info!("Routing table in the configuration file.");
+        tracing::info!("Route table in the configuration file.");
         shared_route_table.set_route_table(config.create_route_table());
+    } else if std::env::var("KUBERNETES_SERVICE_HOST").is_ok() {
+        tracing::info!("Route table within the current namespace in Kubernetes cluster.");
+        tokio::spawn(update_route_table_in_k8s(shared_route_table.clone()));
     } else {
-        tracing::info!("Routing table within the current namespace in Kubernetes cluster.");
-        tokio::spawn({
-            let shared_route_table = shared_route_table.clone();
-            async move {
-                let mut prev_route_table = None;
-                loop {
-                    match k8s::find_graphql_services().await {
-                        Ok(route_table) => {
-                            if Some(&route_table) != prev_route_table.as_ref() {
-                                tracing::info!(route_table = ?route_table, "Route table updated.");
-                                shared_route_table.set_route_table(route_table.clone());
-                                prev_route_table = Some(route_table);
-                            }
-                        }
-                        Err(err) => {
-                            tracing::error!(error = %err, "Failed to find graphql services.");
-                        }
-                    }
-
-                    tokio::time::sleep(Duration::from_secs(30)).await;
-                }
-            }
-        });
+        tracing::info!("Route table is empty.");
+        return Ok(());
     }
 
     let handler_config = HandlerConfig {
         shared_route_table,
         forward_headers: Arc::new(config.forward_headers),
     };
+
     let graphql = warp::path::end().and(
         handler::graphql_request(handler_config.clone())
             .or(handler::graphql_websocket(handler_config.clone()))
             .or(handler::graphql_playground()),
     );
     let health = warp::path!("health").map(|| warp::reply::json(&"healthy"));
-    let routes = graphql.or(health);
+    let routes = graphql.or(health).or(metrics(exporter));
 
     let bind_addr: SocketAddr = config
         .bind

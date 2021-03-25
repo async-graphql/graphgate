@@ -33,6 +33,9 @@ pub struct JaegerConfig {
     pub service_name: String,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct PrometheusConfig {}
+
 impl Config {
     pub fn create_route_table(&self) -> ServiceRouteTable {
         let mut route_table = ServiceRouteTable::default();

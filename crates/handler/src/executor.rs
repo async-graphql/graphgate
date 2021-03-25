@@ -11,7 +11,7 @@ use graphgate_planner::{
 use graphgate_planner::{Request, Response, ServerError};
 use graphgate_schema::ComposedSchema;
 use opentelemetry::trace::{FutureExt, TraceContextExt, Tracer};
-use opentelemetry::{global, Context, KeyValue};
+use opentelemetry::{global, Context};
 use serde::{Deserialize, Deserializer};
 use tokio::sync::{mpsc, Mutex};
 use value::{ConstValue, Name, Variables};
@@ -85,12 +85,10 @@ impl<'e> Executor<'e> {
                         futures_util::future::try_join_all(subscribe_nodes.iter().map(|node| {
                             let tracer = global::tracer("graphql");
                             let attributes = vec![
-                                KeyValue::new(KEY_SERVICE, node.service.to_string()),
-                                KeyValue::new(KEY_QUERY, node.query.to_string()),
-                                KeyValue::new(
-                                    KEY_VARIABLES,
-                                    serde_json::to_string(&node.variables).unwrap(),
-                                ),
+                                KEY_SERVICE.string(node.service.to_string()),
+                                KEY_QUERY.string(node.query.to_string()),
+                                KEY_VARIABLES
+                                    .string(serde_json::to_string(&node.variables).unwrap()),
                             ];
                             let span = tracer
                                 .span_builder(&format!("subscribe [{}]", node.service))
@@ -106,14 +104,14 @@ impl<'e> Executor<'e> {
                                         .variables(node.variables.to_variables()),
                                     tx.clone(),
                                 )
-                                .with_context(cx.clone())
+                                .with_context(cx)
                         }))
                         .await
                         .map(move |_| rx)
                         .map_err(|err| {
                             Context::current().span().add_event(
                                 "Failed to subscribe".to_string(),
-                                vec![KeyValue::new(KEY_ERROR, err.to_string())],
+                                vec![KEY_ERROR.string(err.to_string())],
                             );
                             Response {
                                 data: ConstValue::Null,
@@ -204,12 +202,9 @@ impl<'e> Executor<'e> {
         let span = tracer
             .span_builder(&format!("fetch [{}]", fetch.service))
             .with_attributes(vec![
-                KeyValue::new(KEY_SERVICE, fetch.service.to_string()),
-                KeyValue::new(KEY_QUERY, fetch.query.to_string()),
-                KeyValue::new(
-                    KEY_VARIABLES,
-                    serde_json::to_string(&request.variables).unwrap(),
-                ),
+                KEY_SERVICE.string(fetch.service.to_string()),
+                KEY_QUERY.string(fetch.query.to_string()),
+                KEY_VARIABLES.string(serde_json::to_string(&request.variables).unwrap()),
             ])
             .start(&tracer);
         let cx = Context::current_with_span(span);
@@ -421,13 +416,10 @@ impl<'e> Executor<'e> {
         let span = tracer
             .span_builder(&format!("flatten [{}]", flatten.service))
             .with_attributes(vec![
-                KeyValue::new(KEY_SERVICE, flatten.service.to_string()),
-                KeyValue::new(KEY_QUERY, flatten.query.to_string()),
-                KeyValue::new(
-                    KEY_VARIABLES,
-                    serde_json::to_string(&request.variables).unwrap(),
-                ),
-                KeyValue::new(KEY_PATH, flatten.path.to_string()),
+                KEY_SERVICE.string(flatten.service.to_string()),
+                KEY_QUERY.string(flatten.query.to_string()),
+                KEY_VARIABLES.string(serde_json::to_string(&request.variables).unwrap()),
+                KEY_PATH.string(flatten.path.to_string()),
             ])
             .start(&tracer);
         let cx = Context::current_with_span(span);
@@ -602,9 +594,9 @@ fn add_tracing_spans(response: &mut Response) {
     let mut resolvers = HashMap::<_, Context>::new();
     for resolver in &tracing_result.execution.resolvers {
         let attributes = vec![
-            KeyValue::new(KEY_PARENT_TYPE, resolver.parent_type.clone()),
-            KeyValue::new(KEY_RETURN_TYPE, resolver.return_type.clone()),
-            KeyValue::new(KEY_FIELD_NAME, resolver.field_name.clone()),
+            KEY_PARENT_TYPE.string(resolver.parent_type.clone()),
+            KEY_RETURN_TYPE.string(resolver.return_type.clone()),
+            KEY_FIELD_NAME.string(resolver.field_name.clone()),
         ];
 
         let mut span_builder = tracer
