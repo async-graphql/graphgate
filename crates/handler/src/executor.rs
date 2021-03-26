@@ -123,7 +123,7 @@ impl<'e> Executor<'e> {
                             }
                         })
                     }
-                    .with_context(cx)
+                    .with_context(cx.clone())
                     .await
                 };
 
@@ -133,8 +133,7 @@ impl<'e> Executor<'e> {
                             if let Some(flatten_node) = flatten_node {
                                 *self.resp.lock().await = response;
 
-                                let span = tracer.span_builder("push").start(&tracer);
-                                let cx = Context::current_with_span(span);
+                                let cx = Context::current_with_span(tracer.span_builder("push").start(&tracer));
                                 self.execute_node(&fetcher, flatten_node).with_context(cx).await;
 
                                 yield std::mem::take(&mut *self.resp.lock().await);
@@ -142,7 +141,7 @@ impl<'e> Executor<'e> {
                                 yield response;
                             }
                         }
-                    }),
+                    }.with_context(cx)),
                     Err(response) => {
                         ws_controller.stop(id).await;
                         Box::pin(futures_util::stream::once(async move { response }).boxed())
