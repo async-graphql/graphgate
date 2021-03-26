@@ -91,7 +91,6 @@ pub struct MetaType {
     pub owner: Option<String>,
     pub keys: HashMap<String, Vec<KeyFields>>,
 
-    pub is_introspection: bool,
     pub implements: IndexSet<Name>,
     pub fields: IndexMap<Name, MetaField>,
     pub possible_types: IndexSet<Name>,
@@ -217,7 +216,6 @@ impl ComposedSchema {
                     kind: TypeKind::Object,
                     owner: None,
                     keys: Default::default(),
-                    is_introspection: false,
                     implements: Default::default(),
                     fields: Default::default(),
                     possible_types: Default::default(),
@@ -254,7 +252,6 @@ impl ComposedSchema {
                                     kind: TypeKind::Object,
                                     owner: None,
                                     keys: Default::default(),
-                                    is_introspection: false,
                                     implements: Default::default(),
                                     fields: Default::default(),
                                     possible_types: Default::default(),
@@ -431,7 +428,6 @@ fn convert_type_definition(definition: TypeDefinition) -> MetaType {
         kind: TypeKind::Scalar,
         owner: None,
         keys: Default::default(),
-        is_introspection: false,
         implements: Default::default(),
         fields: Default::default(),
         possible_types: Default::default(),
@@ -653,8 +649,7 @@ fn finish_schema(composed_schema: &mut ComposedSchema) {
     {
         match definition {
             TypeSystemDefinition::Type(type_definition) => {
-                let mut type_definition = convert_type_definition(type_definition.node);
-                type_definition.is_introspection = false;
+                let type_definition = convert_type_definition(type_definition.node);
                 composed_schema
                     .types
                     .insert(type_definition.name.clone(), type_definition);

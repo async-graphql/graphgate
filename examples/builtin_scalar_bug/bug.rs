@@ -1,12 +1,8 @@
 use std::convert::Infallible;
 
-use async_graphql::{
-    Context, EmptyMutation, EmptySubscription, Object, Schema, SimpleObject, Subscription, ID,
-};
+use async_graphql::{EmptyMutation, EmptySubscription, Object, Schema, SimpleObject};
 use async_graphql_warp::{graphql, graphql_subscription};
-use futures_util::stream::Stream;
 use serde::{Deserialize, Serialize};
-use tokio::time::Duration;
 use warp::{Filter, Reply};
 
 // Run the service:

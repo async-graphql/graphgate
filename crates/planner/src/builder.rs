@@ -156,11 +156,7 @@ impl<'a> Context<'a> {
                             Some(field_definition) => field_definition,
                             None => continue,
                         };
-                        let field_type = match ctx.schema.get_type(&field_definition.ty) {
-                            Some(field_type) => field_type,
-                            None => continue,
-                        };
-                        if field_type.is_introspection {
+                        if is_introspection_field(field_name) {
                             ctx.build_introspection_field(inspection_selection_set, &field.node);
                             continue;
                         }
@@ -942,4 +938,9 @@ fn referenced_variables<'a>(
                 .collect(),
         },
     )
+}
+
+#[inline]
+fn is_introspection_field(name: &str) -> bool {
+    name == "__type" || name == "__schema"
 }
