@@ -196,6 +196,13 @@ fn is_valid_scalar_value(type_name: &str, value: &ConstValue) -> bool {
         ("Boolean", ConstValue::Boolean(_)) => true,
         ("ID", ConstValue::String(_)) => true,
         ("ID", ConstValue::Number(n)) if n.is_i64() || n.is_u64() => true,
-        _ => false,
+        ("Int", _) => false,
+        ("Float", _) => false,
+        ("String", _) => false,
+        ("Boolean", _) => false,
+        ("ID", _) => false,
+        // Otherwise, this is a custom scalar type and we defer to its ScalarType impl to decide
+        // whether the payload is valid or not.
+        _ => true,
     }
 }
