@@ -15,8 +15,11 @@ schema
     subscription: Subscription
 }
 
+scalar CustomUserID
+
 type Query {
     myName: String! @resolve(service: "accounts")
+    theirName(id: CustomUserID): String @resolve(service: "accounts")
     me: User @resolve(service: "accounts")
     user(id: ID!): User @resolve(service: "accounts")
     topProducts: [Product!]! @resolve(service: "products")
