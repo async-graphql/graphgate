@@ -5,8 +5,8 @@ use futures_util::future::BoxFuture;
 use futures_util::stream::BoxStream;
 use futures_util::StreamExt;
 use graphgate_planner::{
-    FetchNode, FlattenNode, IntrospectionNode, ParallelNode, PathSegment, PlanNode, RootNode,
-    SequenceNode, SubscribeNode,
+    FetchNode, FlattenNode, IntrospectionNode, ParallelNode, PathSegment, PlanNode, ResponsePath,
+    RootNode, SequenceNode, SubscribeNode,
 };
 use graphgate_planner::{Request, Response, ServerError};
 use graphgate_schema::ComposedSchema;
@@ -48,6 +48,7 @@ impl<'e> Executor<'e> {
                 data: ConstValue::Null,
                 errors: vec![ServerError {
                     message: "Not supported".to_string(),
+                    path: Default::default(),
                     locations: Default::default(),
                 }],
                 extensions: Default::default(),
@@ -117,6 +118,7 @@ impl<'e> Executor<'e> {
                                 data: ConstValue::Null,
                                 errors: vec![ServerError {
                                     message: err.to_string(),
+                                    path: Default::default(),
                                     locations: Default::default(),
                                 }],
                                 extensions: Default::default(),
@@ -218,11 +220,12 @@ impl<'e> Executor<'e> {
                         add_tracing_spans(&mut resp);
                         merge_data(&mut current_resp.data, resp.data);
                     } else {
-                        merge_errors(&mut current_resp.errors, resp.errors);
+                        rewrite_errors(None, &mut current_resp.errors, resp.errors);
                     }
                 }
                 Err(err) => current_resp.errors.push(ServerError {
                     message: err.to_string(),
+                    path: Default::default(),
                     locations: Default::default(),
                 }),
             }
@@ -442,12 +445,13 @@ impl<'e> Executor<'e> {
                             }
                         }
                     } else {
-                        merge_errors(&mut current_resp.errors, resp.errors);
+                        rewrite_errors(Some(&flatten.path), &mut current_resp.errors, resp.errors);
                     }
                 }
                 Err(err) => {
                     current_resp.errors.push(ServerError {
                         message: err.to_string(),
+                        path: Default::default(),
                         locations: Default::default(),
                     });
                 }
@@ -482,10 +486,30 @@ fn merge_data(target: &mut ConstValue, value: ConstValue) {
     }
 }
 
-fn merge_errors(target: &mut Vec<ServerError>, errors: Vec<ServerError>) {
-    for err in errors {
+fn rewrite_errors(
+    prefix_path: Option<&ResponsePath<'_>>,
+    target: &mut Vec<ServerError>,
+    errors: Vec<ServerError>,
+) {
+    for mut err in errors {
+        let mut path = Vec::new();
+
+        if let Some(prefix_path) = prefix_path {
+            for segment in prefix_path.iter() {
+                path.push(ConstValue::String(segment.name.to_string()));
+                if segment.is_list {
+                    path.push(ConstValue::Number(0.into()));
+                }
+            }
+        }
+
+        if matches!(err.path.first(), Some(ConstValue::String(s)) if s=="_entities") {
+            path.extend(err.path.drain(1..));
+        }
+
         target.push(ServerError {
             message: err.message,
+            path,
             locations: Default::default(),
         })
     }

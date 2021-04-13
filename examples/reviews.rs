@@ -44,6 +44,10 @@ impl Product {
             .filter(|review| review.product.upc == self.upc)
             .collect()
     }
+
+    async fn error(&self) -> Result<i32, &str> {
+        return Err("custom error");
+    }
 }
 
 #[derive(SimpleObject)]

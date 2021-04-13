@@ -16,6 +16,9 @@ pub struct ServerError {
     pub message: String,
 
     #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub path: Vec<ConstValue>,
+
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
     pub locations: Vec<Pos>,
 }
 
@@ -23,6 +26,7 @@ impl ServerError {
     pub fn new(message: impl Into<String>) -> Self {
         Self {
             message: message.into(),
+            path: Default::default(),
             locations: Default::default(),
         }
     }
