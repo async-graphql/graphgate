@@ -31,7 +31,7 @@ impl<'a> HttpFetcher<'a> {
 impl<'a> Fetcher for HttpFetcher<'a> {
     async fn query(&self, service: &str, request: Request) -> Result<Response> {
         self.router_table
-            .query(service, request, Some(self.header_map))
+            .query(service, request, Some(self.header_map), None)
             .await
     }
 }
