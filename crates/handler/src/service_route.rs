@@ -24,6 +24,8 @@ pub struct ServiceRoute {
 
     /// GraphQL WebSocket path, default is `/`.
     pub subscribe_path: Option<String>,
+
+    pub introspection_path: Option<String>,
 }
 
 /// Service routing table
@@ -53,18 +55,30 @@ impl ServiceRouteTable {
         service: impl AsRef<str>,
         request: Request,
         header_map: Option<&HeaderMap>,
+        introspection: Option<bool>,
     ) -> anyhow::Result<Response> {
         let service = service.as_ref();
         let route = self.0.get(service).ok_or_else(|| {
             anyhow::anyhow!("Service '{}' is not defined in the routing table.", service)
         })?;
+
+        let introspection = introspection.unwrap_or(false);
+
         let scheme = match route.tls {
             true => "https",
             false => "http",
         };
-        let url = match &route.query_path {
-            Some(path) => format!("{}://{}{}", scheme, route.addr, path),
-            None => format!("{}://{}", scheme, route.addr),
+
+        let url = if introspection {
+            match &route.introspection_path {
+                Some(path) => format!("{}://{}{}", scheme, route.addr, path),
+                None => format!("{}://{}", scheme, route.addr),
+            }
+        } else {
+            match &route.query_path {
+                Some(path) => format!("{}://{}{}", scheme, route.addr, path),
+                None => format!("{}://{}", scheme, route.addr),
+            }
         };
 
         let resp = HTTP_CLIENT

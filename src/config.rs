@@ -23,6 +23,7 @@ pub struct ServiceConfig {
     pub tls: bool,
     pub query_path: Option<String>,
     pub subscribe_path: Option<String>,
+    pub introspection_path: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -44,6 +45,7 @@ impl Config {
                     tls: service.tls,
                     query_path: service.query_path.clone(),
                     subscribe_path: service.subscribe_path.clone(),
+                    introspection_path: service.introspection_path.clone(),
                 },
             );
         }

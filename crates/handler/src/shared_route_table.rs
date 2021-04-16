@@ -100,7 +100,7 @@ impl SharedRouteTable {
             let route_table = route_table.clone();
             async move {
                 let resp = route_table
-                    .query(service, Request::new(QUERY_SDL), None)
+                    .query(service, Request::new(QUERY_SDL), None, Some(true))
                     .await
                     .with_context(|| format!("Failed to fetch SDL from '{}'.", service))?;
                 let resp: ResponseQuery =
