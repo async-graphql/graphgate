@@ -22,6 +22,7 @@ use crate::types::{
 };
 use crate::{Response, RootNode, ServerError, SubscribeNode};
 
+#[derive(Debug)]
 struct Context<'a> {
     schema: &'a ComposedSchema,
     fragments: &'a HashMap<Name, Positioned<FragmentDefinition>>,
@@ -53,6 +54,7 @@ impl<'a> PlanBuilder<'a> {
     }
 
     pub fn variables(self, variables: Variables) -> Self {
+        // dbg!(&variables);
         Self { variables, ..self }
     }
 
@@ -89,6 +91,7 @@ impl<'a> PlanBuilder<'a> {
         self.check_rules()?;
 
         let mut ctx = self.create_context();
+        // dbg!(&ctx.variables);
         let operation_definition = get_operation(&self.document, self.operation_name.as_deref());
 
         let root_type = match operation_definition.node.ty {
@@ -902,19 +905,52 @@ fn referenced_variables<'a>(
                             ) {
                                 variables_ref.variables.insert(name, value);
                                 variables_definition_ref.insert(name, &definition.node);
+                            } else {
+                                let definition = variable_definitions
+                                    .iter()
+                                    .find(|d| d.node.name.node.as_str() == name)
+                                    .unwrap();
+                                variables_definition_ref.insert(name, &definition.node);
                             }
                         }
                     }
-                }
-                SelectionRef::InlineFragment { selection_set, .. } => {
+
+                    for dir in &field.field.directives {
+                        for (_, value) in &dir.node.arguments {
+                            for name in value.node.referenced_variables() {
+                                if let Some((value, definition)) = variables.get(name).zip(
+                                    variable_definitions
+                                        .iter()
+                                        .find(|d| d.node.name.node.as_str() == name),
+                                ) {
+                                    variables_ref.variables.insert(name, value);
+                                    variables_definition_ref.insert(name, &definition.node);
+                                } else {
+                                    let definition = variable_definitions
+                                        .iter()
+                                        .find(|d| d.node.name.node.as_str() == name)
+                                        .unwrap();
+                                    variables_definition_ref.insert(name, &definition.node);
+                                }
+                            }
+                        }
+                    }
                     referenced_variables_rec(
-                        selection_set,
+                        &field.selection_set,
                         variables,
                         variable_definitions,
                         variables_ref,
                         variables_definition_ref,
-                    );
+                    )
                 }
+
+                SelectionRef::InlineFragment { selection_set, .. } => referenced_variables_rec(
+                    selection_set,
+                    variables,
+                    variable_definitions,
+                    variables_ref,
+                    variables_definition_ref,
+                ),
                 _ => {}
             }
         }

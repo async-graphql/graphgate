@@ -40,6 +40,7 @@ pub async fn server(
 
                     match client_msg {
                         ClientMessage::ConnectionInit { payload } if controller.is_none() => {
+                            // dbg!(&header_map);
                             controller = Some(WebSocketController::new(route_table.clone(), &header_map, payload));
                             sink.send(Message::text(serde_json::to_string(&ServerMessage::ConnectionAck).unwrap())).await.ok();
                         }
@@ -63,8 +64,13 @@ pub async fn server(
                         }
                         ClientMessage::Start { id, payload } | ClientMessage::Subscribe { id, payload } => {
                             let controller = controller.get_or_insert_with(|| WebSocketController::new(route_table.clone(), &header_map, None)).clone();
+                            // dbg!(&payload);
+                            let variables = payload.variables;
                             let document = match parser::parse_query(&payload.query) {
-                                Ok(document) => document,
+                                Ok(document) => {
+                                    // dbg!(&document);
+                                    document
+                                },
                                 Err(err) => {
                                     let resp = Response {
                                         data: ConstValue::Null,
@@ -85,7 +91,7 @@ pub async fn server(
                             let stream = {
                                 let id = id.clone();
                                 async_stream::stream! {
-                                    let builder = PlanBuilder::new(&schema, document);
+                                    let builder = PlanBuilder::new(&schema, document).variables(variables);
                                     let node = match builder.plan() {
                                         Ok(node) => node,
                                         Err(resp) => {

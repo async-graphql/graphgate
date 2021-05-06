@@ -20,6 +20,7 @@ use crate::ServiceRouteTable;
 
 const CONNECT_TIMEOUT_SECONDS: u64 = 5;
 
+#[derive(Debug)]
 struct SubscribeCommand {
     service: String,
     id: String,
@@ -154,10 +155,13 @@ impl WebSocketContext {
             true => "wss",
             false => "ws",
         };
-        let url = match &route.query_path {
+        // dbg!(route);
+        let url = match &route.subscribe_path {
             Some(path) => format!("{}://{}{}", scheme, route.addr, path),
             None => format!("{}://{}", scheme, route.addr),
         };
+
+        // dbg!(&url);
 
         tracing::debug!(url = %url, service = service, "Connect to upstream websocket");
         let mut http_request = HttpRequest::builder()
@@ -215,6 +219,7 @@ impl WebSocketContext {
     }
 
     async fn handle_command_subscribe(&mut self, command: SubscribeCommand) {
+        // dbg!(&command);
         if !self.upstream.contains_key(&command.service) {
             let (stream, protocol) = match self.ensure_upstream(&command.service).await {
                 Ok(stream) => stream,

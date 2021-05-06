@@ -134,6 +134,23 @@ async fn main() -> Result<()> {
         shared_route_table,
         forward_headers: Arc::new(config.forward_headers),
     };
+    let cors = warp::cors()
+        .allow_any_origin()
+        .allow_methods(vec!["GET", "POST", "DELETE", "OPTIONS"])
+        .allow_credentials(true)
+        .allow_headers(vec![
+            "Authorization",
+            "Kairos-Team-Context",
+            "kairos-client-environment",
+            "DNT",
+            "X-CustomHeader",
+            "Keep-Alive",
+            "User-Agent",
+            "X-Requested-With",
+            "If-Modified-Since",
+            "Cache-Control",
+            "Content-Type",
+        ]);
 
     let graphql = warp::path::end().and(
         handler::graphql_request(handler_config.clone())
@@ -141,7 +158,7 @@ async fn main() -> Result<()> {
             .or(handler::graphql_playground()),
     );
     let health = warp::path!("health").map(|| warp::reply::json(&"healthy"));
-    let routes = graphql.or(health).or(metrics(exporter));
+    let routes = graphql.or(health).or(metrics(exporter)).with(cors);
 
     let bind_addr: SocketAddr = config
         .bind
