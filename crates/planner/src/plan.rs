@@ -134,13 +134,13 @@ pub struct IntrospectionNode {
 #[serde(rename_all = "camelCase")]
 pub struct FetchNode<'a> {
     pub service: &'a str,
+    #[serde(skip_serializing_if = "VariablesRef::is_empty")]
     pub variables: VariablesRef<'a>,
     pub query: FetchQuery<'a>,
 }
 
 impl<'a> FetchNode<'a> {
     pub fn to_request(&self) -> Request {
-        // not present here
         Request::new(self.query.to_string()).variables(self.variables.to_variables())
     }
 }
@@ -151,6 +151,7 @@ pub struct FlattenNode<'a> {
     pub path: ResponsePath<'a>,
     pub prefix: usize,
     pub service: &'a str,
+    #[serde(skip_serializing_if = "VariablesRef::is_empty")]
     pub variables: VariablesRef<'a>,
     pub query: FetchQuery<'a>,
 }

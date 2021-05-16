@@ -54,7 +54,6 @@ impl<'a> PlanBuilder<'a> {
     }
 
     pub fn variables(self, variables: Variables) -> Self {
-        // dbg!(&variables);
         Self { variables, ..self }
     }
 
@@ -91,7 +90,6 @@ impl<'a> PlanBuilder<'a> {
         self.check_rules()?;
 
         let mut ctx = self.create_context();
-        // dbg!(&ctx.variables);
         let operation_definition = get_operation(&self.document, self.operation_name.as_deref());
 
         let root_type = match operation_definition.node.ty {

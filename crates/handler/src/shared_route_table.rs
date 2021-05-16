@@ -51,8 +51,8 @@ impl Default for SharedRouteTable {
 impl SharedRouteTable {
     async fn update_loop(self, mut rx: mpsc::UnboundedReceiver<Command>) {
         let mut update_interval = tokio::time::interval_at(
-            Instant::now() + Duration::from_secs(10),
-            Duration::from_secs(20000),
+            Instant::now() + Duration::from_secs(3),
+            Duration::from_secs(30),
         );
 
         loop {
@@ -107,7 +107,6 @@ impl SharedRouteTable {
                     value::from_value(resp.data).context("Failed to parse response.")?;
                 let document = parser::parse_schema(resp.service.sdl)
                     .with_context(|| format!("Invalid SDL from '{}'.", service))?;
-                println!("updated service schema {}", service);
                 Ok::<_, Error>((service.to_string(), document))
             }
         }))
@@ -159,8 +158,6 @@ impl SharedRouteTable {
                     .unwrap();
             }
         };
-
-        // bool present here request.variables
 
         let mut plan_builder =
             PlanBuilder::new(&composed_schema, document).variables(request.variables);

@@ -26,7 +26,6 @@ impl Request {
     }
 
     pub fn variables(self, variables: Variables) -> Self {
-        //
         Self { variables, ..self }
     }
 

@@ -24,6 +24,18 @@ pub struct ServiceConfig {
     pub query_path: Option<String>,
     pub subscribe_path: Option<String>,
     pub introspection_path: Option<String>,
+    pub websocket_path: Option<String>,
+}
+
+impl ServiceConfig {
+    // websocket path should default to query path unless set
+    fn default_or_set_websocket_path(&self) -> Option<String> {
+        if self.websocket_path.is_some() {
+            self.websocket_path.clone()
+        } else {
+            self.query_path.clone()
+        }
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -46,6 +58,7 @@ impl Config {
                     query_path: service.query_path.clone(),
                     subscribe_path: service.subscribe_path.clone(),
                     introspection_path: service.introspection_path.clone(),
+                    websocket_path: service.default_or_set_websocket_path(),
                 },
             );
         }

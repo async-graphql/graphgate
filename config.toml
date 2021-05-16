@@ -18,7 +18,10 @@ name = "accounts"               # Service name
 addr = "127.0.0.1:8001"         # Service address
 query_path = "/"                # GraphQL query endpoint, Default: /
 subscribe_path = "/"            # GraphQL subscription endpoint, Default: /
-introspection_path = "/"        # GraphQL introspection path, Default: /
+introspection_path = "/"        # GraphQL introspection path, Default: /#
+websocket_path = "/"            # Endpoint to be used for graphql-transport-ws,
+                                # may be different from path used for subscriptions or queries
+                                # defaults to query path otherwise /
 
 [[services]]
 name = "products"

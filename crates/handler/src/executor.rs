@@ -63,7 +63,6 @@ impl<'e> Executor<'e> {
         node: &'a RootNode<'e>,
     ) -> BoxStream<'a, Response> {
         let fetcher = WebSocketFetcher::new(ws_controller.clone());
-        // dbg!(node);
         match node {
             RootNode::Query(node) => Box::pin(async_stream::stream! {
                 self.execute_node(&fetcher, node).await;
@@ -84,7 +83,6 @@ impl<'e> Executor<'e> {
 
                         futures_util::future::try_join_all(subscribe_nodes.iter().map(|node| {
                             let tracer = global::tracer("graphql");
-                            // dbg!(&node.variables);
                             let attributes = vec![
                                 KEY_SERVICE.string(node.service.to_string()),
                                 KEY_QUERY.string(node.query.to_string()),
@@ -96,7 +94,6 @@ impl<'e> Executor<'e> {
                                 .with_attributes(attributes)
                                 .start(&tracer);
                             let cx = Context::current_with_span(span);
-                            // println!("variables: {:?}", &node.variables);
                             ws_controller
                                 .subscribe(
                                     id,

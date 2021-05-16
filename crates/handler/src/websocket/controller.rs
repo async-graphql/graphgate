@@ -155,13 +155,11 @@ impl WebSocketContext {
             true => "wss",
             false => "ws",
         };
-        // dbg!(route);
-        let url = match &route.subscribe_path {
+
+        let url = match &route.websocket_path {
             Some(path) => format!("{}://{}{}", scheme, route.addr, path),
             None => format!("{}://{}", scheme, route.addr),
         };
-
-        // dbg!(&url);
 
         tracing::debug!(url = %url, service = service, "Connect to upstream websocket");
         let mut http_request = HttpRequest::builder()
@@ -219,7 +217,6 @@ impl WebSocketContext {
     }
 
     async fn handle_command_subscribe(&mut self, command: SubscribeCommand) {
-        // dbg!(&command);
         if !self.upstream.contains_key(&command.service) {
             let (stream, protocol) = match self.ensure_upstream(&command.service).await {
                 Ok(stream) => stream,

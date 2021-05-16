@@ -34,7 +34,6 @@ impl Protocols {
 
     #[inline]
     pub fn subscribe_message<'a>(&self, id: &'a str, request: Request) -> ClientMessage<'a> {
-        // dbg!(&request);
         match self {
             Protocols::SubscriptionsTransportWS => ClientMessage::Start {
                 id,
