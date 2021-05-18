@@ -26,6 +26,8 @@ pub struct ServiceRoute {
     pub subscribe_path: Option<String>,
 
     pub introspection_path: Option<String>,
+
+    pub websocket_path: Option<String>,
 }
 
 /// Service routing table

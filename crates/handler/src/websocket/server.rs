@@ -85,7 +85,7 @@ pub async fn server(
                             let stream = {
                                 let id = id.clone();
                                 async_stream::stream! {
-                                    let builder = PlanBuilder::new(&schema, document);
+                                    let builder = PlanBuilder::new(&schema, document).variables(payload.variables);
                                     let node = match builder.plan() {
                                         Ok(node) => node,
                                         Err(resp) => {

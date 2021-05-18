@@ -10,6 +10,7 @@ const ANNOTATIONS_TLS: &str = "graphgate.org/tls";
 const ANNOTATIONS_QUERY_PATH: &str = "graphgate.org/queryPath";
 const ANNOTATIONS_SUBSCRIBE_PATH: &str = "graphgate.org/subscribePath";
 const ANNOTATIONS_INTROSPECTION_PATH: &str = "graphgate.org/introspectionPath";
+const ANNOTATIONS_WEBSOCKET_PATH: &str = "graphgate.org/websocketPath";
 
 fn get_label_value<'a>(meta: &'a ObjectMeta, name: &str) -> Option<&'a str> {
     meta.labels
@@ -66,6 +67,8 @@ pub async fn find_graphql_services() -> Result<ServiceRouteTable> {
                     get_annotation_value(&service.metadata, ANNOTATIONS_SUBSCRIBE_PATH);
                 let introspection_path =
                     get_annotation_value(&service.metadata, ANNOTATIONS_INTROSPECTION_PATH);
+                let websocket_path =
+                    get_annotation_value(&service.metadata, ANNOTATIONS_WEBSOCKET_PATH);
                 route_table.insert(
                     service_name.to_string(),
                     ServiceRoute {
@@ -74,6 +77,7 @@ pub async fn find_graphql_services() -> Result<ServiceRouteTable> {
                         query_path: query_path.map(ToString::to_string),
                         subscribe_path: subscribe_path.map(ToString::to_string),
                         introspection_path: introspection_path.map(ToString::to_string),
+                        websocket_path: websocket_path.map(ToString::to_string),
                     },
                 );
             }

@@ -20,6 +20,7 @@ use crate::ServiceRouteTable;
 
 const CONNECT_TIMEOUT_SECONDS: u64 = 5;
 
+#[derive(Debug)]
 struct SubscribeCommand {
     service: String,
     id: String,
@@ -154,7 +155,8 @@ impl WebSocketContext {
             true => "wss",
             false => "ws",
         };
-        let url = match &route.query_path {
+
+        let url = match &route.websocket_path {
             Some(path) => format!("{}://{}{}", scheme, route.addr, path),
             None => format!("{}://{}", scheme, route.addr),
         };

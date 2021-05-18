@@ -64,7 +64,6 @@ impl<'e> Executor<'e> {
         node: &'a RootNode<'e>,
     ) -> BoxStream<'a, Response> {
         let fetcher = WebSocketFetcher::new(ws_controller.clone());
-
         match node {
             RootNode::Query(node) => Box::pin(async_stream::stream! {
                 self.execute_node(&fetcher, node).await;
@@ -96,7 +95,6 @@ impl<'e> Executor<'e> {
                                 .with_attributes(attributes)
                                 .start(&tracer);
                             let cx = Context::current_with_span(span);
-
                             ws_controller
                                 .subscribe(
                                     id,
