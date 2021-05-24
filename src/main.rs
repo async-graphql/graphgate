@@ -135,23 +135,64 @@ async fn main() -> Result<()> {
         forward_headers: Arc::new(config.forward_headers),
     };
 
+    let cors = if let Some(cors_config) = config.cors {
+        let warp_cors = warp::cors();
+
+        let origins_vec = cors_config.allow_origins.unwrap_or_default();
+
+        let origins: Vec<&str> = origins_vec.iter().map(|s| s as &str).collect();
+
+        let headers_vec = cors_config.allow_headers.unwrap_or_default();
+
+        let headers: Vec<&str> = headers_vec.iter().map(|s| s as &str).collect();
+
+        let allow_credentials = cors_config.allow_credentials.unwrap_or(false);
+
+        let allow_methods_vec = cors_config.allow_methods.unwrap_or_default();
+
+        let methods: Vec<&str> = allow_methods_vec.iter().map(|s| s as &str).collect();
+
+        let cors_setup = warp_cors
+            .allow_headers(headers)
+            .allow_origins(origins)
+            .allow_methods(methods)
+            .allow_credentials(allow_credentials);
+
+        if let Some(true) = cors_config.allow_any_origin {
+            Some(cors_setup.allow_any_origin())
+        } else {
+            Some(cors_setup)
+        }
+    } else {
+        None
+    };
+
     let graphql = warp::path::end().and(
         handler::graphql_request(handler_config.clone())
             .or(handler::graphql_websocket(handler_config.clone()))
             .or(handler::graphql_playground()),
     );
     let health = warp::path!("health").map(|| warp::reply::json(&"healthy"));
-    let routes = graphql.or(health).or(metrics(exporter));
 
     let bind_addr: SocketAddr = config
         .bind
         .parse()
         .context(format!("Failed to parse bind addr '{}'", config.bind))?;
+    if let Some(warp_cors) = cors {
+        let routes = graphql.or(health).or(metrics(exporter)).with(warp_cors);
+        let (addr, server) = warp::serve(routes)
+            .bind_with_graceful_shutdown(bind_addr, signal::ctrl_c().map(|_| ()));
+        tracing::info!(addr = %addr, "Listening");
+        server.await;
+        tracing::info!("Server shutdown");
+    } else {
+        let routes = graphql.or(health).or(metrics(exporter));
+        let (addr, server) = warp::serve(routes)
+            .bind_with_graceful_shutdown(bind_addr, signal::ctrl_c().map(|_| ()));
+        tracing::info!(addr = %addr, "Listening");
+        server.await;
+        tracing::info!("Server shutdown");
+    }
 
-    let (addr, server) =
-        warp::serve(routes).bind_with_graceful_shutdown(bind_addr, signal::ctrl_c().map(|_| ()));
-    tracing::info!(addr = %addr, "Listening");
-    server.await;
-    tracing::info!("Server shutdown");
     Ok(())
 }

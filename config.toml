@@ -4,6 +4,25 @@ bind = "0.0.0.0:8000"
 # Forward headers to upstream services.
 forward_headers = []
 
+## Optional CORS config
+## If allow_any_origin is set to true it will override any origins set using the allow_origins option
+# [cors]
+# allow_any_origin = true
+# allow_origins = ["https://example.com"]
+# allow_methods = ["GET", "POST", "DELETE", "OPTIONS"]
+# allow_credentials = true
+# allow_headers = [
+#             "Authorization",
+#             "DNT",
+#             "X-CustomHeader",
+#             "Keep-Alive",
+#             "User-Agent",
+#             "X-Requested-With",
+#             "If-Modified-Since",
+#             "Cache-Control",
+#             "Content-Type",
+#         ]
+
 # Jaeger
 [jaeger]
 agent_endpoint = "127.0.0.1:6831"
