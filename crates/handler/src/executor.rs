@@ -244,7 +244,6 @@ impl<'e> Executor<'e> {
             possible_type: Option<&str>,
         ) -> Representation {
             let prefix = format!("__key{}_", prefix);
-
             if let Some(possible_type) = possible_type {
                 match from.get(format!("{}__typename", prefix).as_str()) {
                     Some(ConstValue::String(typename)) if typename == possible_type => {}
@@ -289,6 +288,8 @@ impl<'e> Executor<'e> {
                                 prefix,
                                 segment.possible_type,
                             ));
+                        } else {
+                            representations.push(Representation::Skip);
                         }
                     }
                     ConstValue::Object(object) if segment.is_list => {
@@ -300,6 +301,8 @@ impl<'e> Executor<'e> {
                                         prefix,
                                         segment.possible_type,
                                     ));
+                                } else {
+                                    representations.push(Representation::Skip);
                                 }
                             }
                         }
@@ -311,6 +314,8 @@ impl<'e> Executor<'e> {
                     ConstValue::Object(object) if !segment.is_list => {
                         if let Some(next_value) = object.get_mut(segment.name) {
                             get_representations(representations, next_value, &path[1..], prefix);
+                        } else {
+                            representations.push(Representation::Skip);
                         }
                     }
                     ConstValue::Object(object) if segment.is_list => {
@@ -318,6 +323,8 @@ impl<'e> Executor<'e> {
                             for element in array {
                                 get_representations(representations, element, &path[1..], prefix);
                             }
+                        } else {
+                            representations.push(Representation::Skip);
                         }
                     }
                     _ => {}
@@ -336,7 +343,6 @@ impl<'e> Executor<'e> {
                 None => return,
             };
             let is_last = path.len() == 1;
-
             if is_last {
                 match target {
                     ConstValue::Object(object) if !segment.is_list => {
