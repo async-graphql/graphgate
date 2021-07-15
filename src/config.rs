@@ -13,6 +13,8 @@ pub struct Config {
     pub forward_headers: Vec<String>,
 
     pub jaeger: Option<JaegerConfig>,
+
+    pub cors: Option<CorsConfig>,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -36,6 +38,15 @@ impl ServiceConfig {
             self.query_path.clone()
         }
     }
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CorsConfig {
+    pub allow_any_origin: Option<bool>,
+    pub allow_methods: Option<Vec<String>>,
+    pub allow_credentials: Option<bool>,
+    pub allow_headers: Option<Vec<String>>,
+    pub allow_origins: Option<Vec<String>>,
 }
 
 #[derive(Debug, Deserialize)]

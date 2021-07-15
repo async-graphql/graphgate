@@ -86,11 +86,13 @@ dependencies = [
 
 [[package]]
 name = "async-graphql"
-version = "2.8.3"
+version = "2.8.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4b7b63cfab4ccfdb198cf8a0c290a79a9c5909a73c81718147e5f5b25158b428"
 dependencies = [
  "async-graphql-derive",
- "async-graphql-parser 2.7.1",
- "async-graphql-value 2.6.5",
+ "async-graphql-parser",
+ "async-graphql-value",
  "async-stream",
  "async-trait",
  "chrono",
@@ -111,10 +113,12 @@ dependencies = [
 
 [[package]]
 name = "async-graphql-derive"
-version = "2.8.2"
+version = "2.8.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "21bb58a182c309b6892a3d051d9639d29d027ae3e271b81f9d0aaa2072c4add4"
 dependencies = [
  "Inflector",
- "async-graphql-parser 2.7.1",
+ "async-graphql-parser",
  "darling",
  "proc-macro-crate",
  "proc-macro2",
@@ -125,32 +129,13 @@ dependencies = [
 
 [[package]]
 name = "async-graphql-parser"
-version = "2.7.1"
-dependencies = [
- "async-graphql-value 2.6.5",
- "pest",
- "pest_derive",
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "async-graphql-parser"
-version = "2.7.1"
+version = "2.8.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2a8d8116f3015b7686ef98ffb70a74183c3c17bf45135993d3f095812e09e786"
+checksum = "467b630648f842082f41342388b6c74fc0b993e7b4a940bc25660a76b529f7b1"
 dependencies = [
- "async-graphql-value 2.6.5 (registry+https://github.com/rust-lang/crates.io-index)",
+ "async-graphql-value",
  "pest",
  "pest_derive",
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "async-graphql-value"
-version = "2.6.5"
-dependencies = [
  "serde",
  "serde_json",
 ]
@@ -167,7 +152,9 @@ dependencies = [
 
 [[package]]
 name = "async-graphql-warp"
-version = "2.8.3"
+version = "2.8.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3e5b0e9bd080b3474f7acb95d8c41d8fb2d72ee5a38127d7185cd08b3278d3b0"
 dependencies = [
  "async-graphql",
  "futures-util",
@@ -772,8 +759,8 @@ name = "graphgate-handler"
 version = "0.5.1"
 dependencies = [
  "anyhow",
- "async-graphql-parser 2.7.1 (registry+https://github.com/rust-lang/crates.io-index)",
- "async-graphql-value 2.6.5 (registry+https://github.com/rust-lang/crates.io-index)",
+ "async-graphql-parser",
+ "async-graphql-value",
  "async-stream",
  "async-trait",
  "chrono",
@@ -798,8 +785,8 @@ dependencies = [
 name = "graphgate-planner"
 version = "0.5.1"
 dependencies = [
- "async-graphql-parser 2.7.1 (registry+https://github.com/rust-lang/crates.io-index)",
- "async-graphql-value 2.6.5 (registry+https://github.com/rust-lang/crates.io-index)",
+ "async-graphql-parser",
+ "async-graphql-value",
  "globset",
  "graphgate-schema",
  "graphgate-validation",
@@ -812,8 +799,8 @@ dependencies = [
 name = "graphgate-schema"
 version = "0.5.1"
 dependencies = [
- "async-graphql-parser 2.7.1 (registry+https://github.com/rust-lang/crates.io-index)",
- "async-graphql-value 2.6.5 (registry+https://github.com/rust-lang/crates.io-index)",
+ "async-graphql-parser",
+ "async-graphql-value",
  "indexmap",
  "thiserror",
 ]
@@ -822,8 +809,8 @@ dependencies = [
 name = "graphgate-validation"
 version = "0.5.0"
 dependencies = [
- "async-graphql-parser 2.7.1 (registry+https://github.com/rust-lang/crates.io-index)",
- "async-graphql-value 2.6.5 (registry+https://github.com/rust-lang/crates.io-index)",
+ "async-graphql-parser",
+ "async-graphql-value",
  "graphgate-schema",
  "indexmap",
  "once_cell",
