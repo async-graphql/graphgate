@@ -721,17 +721,15 @@ impl<'a> Context<'a> {
                         if let Some(fragment) =
                             ctx.fragments.get(&fragment_spread.node.fragment_name.node)
                         {
-                            if fragment.node.type_condition.node.on.node == current_ty {
-                                build_fields(
-                                    ctx,
-                                    path,
-                                    selection_ref_set_group,
-                                    fetch_entity_group,
-                                    current_service,
-                                    &fragment.node.selection_set.node,
-                                    possible_type,
-                                );
-                            }
+                            build_fields(
+                                ctx,
+                                path,
+                                selection_ref_set_group,
+                                fetch_entity_group,
+                                current_service,
+                                &fragment.node.selection_set.node,
+                                possible_type,
+                            );
                         }
                     }
                     Selection::InlineFragment(inline_fragment) => {

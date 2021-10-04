@@ -47,6 +47,7 @@ type User
     username: String!
     reviews: [Review]! @resolve(service: "reviews")
     products: [Product]! @resolve(service: "products")
+    storeAccount: StoreAccount!
 }
 
 interface Product {
@@ -54,6 +55,30 @@ interface Product {
     name: String!
     price: Int!
     reviews: [Review]! @resolve(service: "reviews")
+}
+
+interface StoreAccount {
+    createdAt: DateTime!
+    id: ID!
+}
+
+type PersonalAccount implements StoreAccount
+@owner(service: "accounts")
+{
+    createdAt: DateTime!
+    id: ID!
+    deliveryName: String!
+    dob: DateTime!
+}
+
+type BusinessAccount implements StoreAccount
+@owner(service: "accounts")
+{
+    createdAt: DateTime!
+    id: ID!
+    businessSector: String!
+    taxNumber: Int!
+    businessName: String!
 }
 
 type Mouse implements Product
