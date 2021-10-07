@@ -1,0 +1,31 @@
+fragment AccountDetails on StoreAccount {
+       __typename
+      ... on PersonalAccount {
+        deliveryName
+        dob
+      }
+      ... on BusinessAccount {
+        taxNumber
+        businessSector
+      }
+    }
+
+{
+    me {
+        id
+        username
+        storeAccount {
+          id
+          createdAt
+        ...AccountDetails
+    }
+}
+}
+---
+{}
+---
+{
+    "type": "fetch",
+    "service": "accounts",
+    "query": "query { me { id username storeAccount { ... on PersonalAccount { id createdAt __typename deliveryName dob } ... on BusinessAccount { id createdAt __typename taxNumber businessSector } } } }"
+}

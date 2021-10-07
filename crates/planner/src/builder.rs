@@ -731,6 +731,28 @@ impl<'a> Context<'a> {
                                     &fragment.node.selection_set.node,
                                     possible_type,
                                 );
+                            } else {
+                                let field_type = match ctx
+                                    .schema
+                                    .types
+                                    .get(&fragment.node.type_condition.node.on.node)
+                                {
+                                    Some(field_type) => field_type,
+                                    None => return,
+                                };
+
+                                if matches!(field_type.kind, TypeKind::Interface | TypeKind::Union)
+                                {
+                                    build_fields(
+                                        ctx,
+                                        path,
+                                        selection_ref_set_group,
+                                        fetch_entity_group,
+                                        current_service,
+                                        &fragment.node.selection_set.node,
+                                        possible_type,
+                                    );
+                                }
                             }
                         }
                     }
