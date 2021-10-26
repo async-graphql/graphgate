@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 
 use chrono::{DateTime, Duration, Utc};
 use futures_util::future::BoxFuture;
@@ -10,6 +10,7 @@ use graphgate_planner::{
 };
 use graphgate_planner::{Request, Response, ServerError};
 use graphgate_schema::ComposedSchema;
+use indexmap::IndexMap;
 use opentelemetry::trace::{FutureExt, TraceContextExt, Tracer};
 use opentelemetry::{global, Context};
 use serde::{Deserialize, Deserializer};
@@ -239,7 +240,7 @@ impl<'e> Executor<'e> {
         }
 
         fn extract_keys(
-            from: &mut BTreeMap<Name, ConstValue>,
+            from: &mut IndexMap<Name, ConstValue>,
             prefix: usize,
             possible_type: Option<&str>,
         ) -> Representation {
@@ -251,7 +252,7 @@ impl<'e> Executor<'e> {
                 }
             }
 
-            let mut res = BTreeMap::new();
+            let mut res = IndexMap::new();
             let mut keys = Vec::new();
             for key in from.keys() {
                 if key.as_str().starts_with(&prefix) {
