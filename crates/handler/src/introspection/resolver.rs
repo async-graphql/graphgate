@@ -1,5 +1,3 @@
-use std::collections::BTreeMap;
-
 use graphgate_planner::{IntrospectionDirective, IntrospectionField, IntrospectionSelectionSet};
 use graphgate_schema::ComposedSchema;
 use indexmap::IndexMap;
@@ -17,7 +15,7 @@ pub fn resolve_obj(
     selection_set: &IntrospectionSelectionSet,
     resolve_fn: impl Fn(&str, &IntrospectionField) -> ConstValue,
 ) -> ConstValue {
-    let mut obj = BTreeMap::new();
+    let mut obj = IndexMap::new();
     for field in &selection_set.0 {
         if is_skip(&field.directives) {
             continue;
