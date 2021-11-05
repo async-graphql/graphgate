@@ -1,0 +1,19 @@
+query($sortOrder: UserSortOrder!){
+        users(sortOrder: $sortOrder) {
+            id
+            username
+    }
+}
+---
+{
+    "sortOrder": "CREATED_AT"
+}
+---
+{
+    "type": "fetch",
+    "service": "accounts",
+    "variables": {
+        "sortOrder": "CREATED_AT"
+    },
+    "query": "query($sortOrder: UserSortOrder!) { users(sortOrder: $sortOrder) { id username } }"
+}
