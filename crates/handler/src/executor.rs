@@ -51,6 +51,7 @@ impl<'e> Executor<'e> {
                     message: "Not supported".to_string(),
                     path: Default::default(),
                     locations: Default::default(),
+                    extensions: Default::default(),
                 }],
                 extensions: Default::default(),
             },
@@ -119,6 +120,7 @@ impl<'e> Executor<'e> {
                                     message: err.to_string(),
                                     path: Default::default(),
                                     locations: Default::default(),
+                                    extensions: Default::default(),
                                 }],
                                 extensions: Default::default(),
                             }
@@ -226,6 +228,7 @@ impl<'e> Executor<'e> {
                     message: err.to_string(),
                     path: Default::default(),
                     locations: Default::default(),
+                    extensions: Default::default(),
                 }),
             }
         }
@@ -458,6 +461,7 @@ impl<'e> Executor<'e> {
                         message: err.to_string(),
                         path: Default::default(),
                         locations: Default::default(),
+                        extensions: Default::default(),
                     });
                 }
             }
@@ -512,10 +516,18 @@ fn rewrite_errors(
             path.extend(err.path.drain(1..));
         }
 
+        for subpath in err.path.iter() {
+            match subpath {
+                ConstValue::String(x) => path.push(ConstValue::String(x.to_string())),
+                _ => {}
+            }
+        }
+
         target.push(ServerError {
             message: err.message,
             path,
-            locations: Default::default(),
+            locations: err.locations,
+            extensions: err.extensions,
         })
     }
 }
