@@ -29,7 +29,7 @@
         {
             "type": "fetch",
             "service": "accounts",
-            "query": "query { me { __key1___typename:__typename __key1_id:id } }"
+            "query": "query\n{ me { __key1___typename:__typename __key1_id:id } }"
         },
         {
             "type": "flatten",

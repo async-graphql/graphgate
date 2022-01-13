@@ -69,11 +69,11 @@ impl<'a> Display for FetchQuery<'a> {
                 )
             }
             None => {
-                write!(f, "{}\n", self.operation_type)?;
+                write!(f, "{}", self.operation_type)?;
                 if !self.variable_definitions.variables.is_empty() {
-                    write!(f, "({})\n", self.variable_definitions)?;
+                    write!(f, "({})", self.variable_definitions)?;
                 }
-                write!(f, "{}", self.selection_set)
+                write!(f, "\n{}", self.selection_set)
             }
         }
     }

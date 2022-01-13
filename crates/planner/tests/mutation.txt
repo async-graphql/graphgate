@@ -27,17 +27,17 @@ mutation {
         {
             "type": "fetch",
             "service": "accounts",
-            "query": "mutation { u1:createUser(username: \"u1\") { id username } u2:createUser(username: \"u2\") { id username } }"
+            "query": "mutation\n{ u1:createUser(username: \"u1\") { id username } u2:createUser(username: \"u2\") { id username } }"
         },
         {
             "type": "fetch",
             "service": "reviews",
-            "query": "mutation { review1:createReview(body: \"hehe\") { body } review2:createReview(body: \"haha\") { body } }"
+            "query": "mutation\n{ review1:createReview(body: \"hehe\") { body } review2:createReview(body: \"haha\") { body } }"
         },
         {
             "type": "fetch",
             "service": "accounts",
-            "query": "mutation { u3:createUser(username: \"u3\") { id username } }"
+            "query": "mutation\n{ u3:createUser(username: \"u3\") { id username } }"
         }
     ]
 }

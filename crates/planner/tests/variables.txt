@@ -19,7 +19,7 @@ query($u1: ID!, $u2: ID!) {
         "u1": "user1",
         "u2": "user2"
     },
-    "query": "query($u1: ID!, $u2: ID!) { u1:user(id: $u1) { id username } u2:user(id: $u2) { id username } }"
+    "query": "query($u1: ID!, $u2: ID!)\n{ u1:user(id: $u1) { id username } u2:user(id: $u2) { id username } }"
 }
 ---
 fragment A on Query {
@@ -42,7 +42,7 @@ query($id: ID!) {
     "variables": {
         "id": "user1"
     },
-    "query": "query($id: ID!) { user(id: $id) { id username } }"
+    "query": "query($id: ID!)\n{ user(id: $id) { id username } }"
 }
 ---
 query($id: ID!) {
@@ -63,5 +63,5 @@ query($id: ID!) {
     "variables": {
         "id": "user1"
     },
-    "query": "query($id: ID!) { user(id: $id) { id username } }"
+    "query": "query($id: ID!)\n{ user(id: $id) { id username } }"
 }

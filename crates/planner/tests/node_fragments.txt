@@ -29,5 +29,5 @@ query($nodeId: ID!){
     "variables": {
         "nodeId": "6be94a2d-34d0-45fb-927e-42abd3552007"
     },
-    "query": "query($nodeId: ID!) { node(id: $nodeId) { ... on PersonalAccount { id __typename dob deliveryName } ... on BusinessAccount { id __typename taxNumber businessSector } } }"
+    "query": "query($nodeId: ID!)\n{ node(id: $nodeId) { ... on PersonalAccount { id __typename dob deliveryName } ... on BusinessAccount { id __typename taxNumber businessSector } } }"
 }
