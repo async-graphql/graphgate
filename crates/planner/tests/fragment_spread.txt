@@ -13,5 +13,5 @@ fragment A on User {
 {
     "type": "fetch",
     "service": "accounts",
-    "query": "query { me { id username } }"
+    "query": "query\n{ me { id username } }"
 }

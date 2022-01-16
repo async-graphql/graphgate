@@ -27,5 +27,5 @@ fragment AccountDetails on StoreAccount {
 {
     "type": "fetch",
     "service": "accounts",
-    "query": "query { me { id username storeAccount { ... on PersonalAccount { id createdAt __typename deliveryName dob } ... on BusinessAccount { id createdAt __typename taxNumber businessSector } } } }"
+    "query": "query\n{ me { id username storeAccount { ... on PersonalAccount { id createdAt __typename deliveryName dob } ... on BusinessAccount { id createdAt __typename taxNumber businessSector } } } }"
 }

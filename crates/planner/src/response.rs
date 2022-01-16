@@ -20,6 +20,9 @@ pub struct ServerError {
 
     #[serde(skip_serializing_if = "Vec::is_empty", default)]
     pub locations: Vec<Pos>,
+
+    #[serde(skip_serializing_if = "HashMap::is_empty", default)]
+    pub extensions: HashMap<String, ConstValue>,
 }
 
 impl ServerError {
@@ -28,6 +31,7 @@ impl ServerError {
             message: message.into(),
             path: Default::default(),
             locations: Default::default(),
+            extensions: Default::default(),
         }
     }
 }

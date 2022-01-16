@@ -13,7 +13,7 @@ subscription {
     "subscribeNodes": [
         {
             "service": "accounts",
-            "query": "subscription { users { id username __key1___typename:__typename __key1_id:id } }"
+            "query": "subscription\n{ users { id username __key1___typename:__typename __key1_id:id } }"
         }
     ],
     "flattenNode": {

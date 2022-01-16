@@ -69,6 +69,7 @@ impl<'a> PlanBuilder<'a> {
                         message: err.message,
                         path: Default::default(),
                         locations: err.locations,
+                        extensions: Default::default(),
                     })
                     .collect(),
                 extensions: Default::default(),
