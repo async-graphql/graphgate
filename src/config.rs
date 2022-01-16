@@ -7,6 +7,9 @@ pub struct Config {
     pub bind: String,
 
     #[serde(default)]
+    pub gateway_name: String,
+
+    #[serde(default)]
     pub services: Vec<ServiceConfig>,
 
     #[serde(default)]

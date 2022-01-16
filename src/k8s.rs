@@ -6,6 +6,7 @@ use kube::{Api, Client};
 
 const NAMESPACE_PATH: &str = "/var/run/secrets/kubernetes.io/serviceaccount/namespace";
 const LABEL_GRAPHQL_SERVICE: &str = "graphgate.org/service";
+const LABEL_GRAPHQL_GATEWAY: &str = "graphgate.org/gateway";
 const ANNOTATIONS_TLS: &str = "graphgate.org/tls";
 const ANNOTATIONS_QUERY_PATH: &str = "graphgate.org/queryPath";
 const ANNOTATIONS_SUBSCRIBE_PATH: &str = "graphgate.org/subscribePath";
@@ -28,7 +29,20 @@ fn get_annotation_value<'a>(meta: &'a ObjectMeta, name: &str) -> Option<&'a str>
         .map(|(_, value)| value.as_str())
 }
 
-pub async fn find_graphql_services() -> Result<ServiceRouteTable> {
+fn get_gateway_or_default(gateway_name: &str) -> String {
+    match gateway_name.len() > 0 {
+        true => {
+            tracing::trace!(
+                "Found gateway name: {}. Looking for gateway labels instead.",
+                gateway_name
+            );
+            format!("{}={}", LABEL_GRAPHQL_GATEWAY, gateway_name)
+        }
+        false => LABEL_GRAPHQL_SERVICE.to_string(),
+    }
+}
+
+pub async fn find_graphql_services(gateway_name: &str) -> Result<ServiceRouteTable> {
     tracing::trace!("Find GraphQL services.");
     let client = Client::try_default()
         .await
@@ -43,7 +57,7 @@ pub async fn find_graphql_services() -> Result<ServiceRouteTable> {
 
     tracing::trace!("List all services.");
     let services = services_api
-        .list(&ListParams::default().labels(LABEL_GRAPHQL_SERVICE))
+        .list(&ListParams::default().labels(get_gateway_or_default(gateway_name).as_str()))
         .await
         .context("Failed to call list services api")?;
 

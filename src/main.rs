@@ -40,10 +40,10 @@ fn init_tracing() {
         .init();
 }
 
-async fn update_route_table_in_k8s(shared_route_table: SharedRouteTable) {
+async fn update_route_table_in_k8s(shared_route_table: SharedRouteTable, gateway_name: String) {
     let mut prev_route_table = None;
     loop {
-        match k8s::find_graphql_services().await {
+        match k8s::find_graphql_services(&gateway_name).await {
             Ok(route_table) => {
                 if Some(&route_table) != prev_route_table.as_ref() {
                     tracing::info!(route_table = ?route_table, "Route table updated.");
@@ -124,7 +124,10 @@ async fn main() -> Result<()> {
         shared_route_table.set_route_table(config.create_route_table());
     } else if std::env::var("KUBERNETES_SERVICE_HOST").is_ok() {
         tracing::info!("Route table within the current namespace in Kubernetes cluster.");
-        tokio::spawn(update_route_table_in_k8s(shared_route_table.clone()));
+        tokio::spawn(update_route_table_in_k8s(
+            shared_route_table.clone(),
+            config.gateway_name.clone(),
+        ));
     } else {
         tracing::info!("Route table is empty.");
         return Ok(());
