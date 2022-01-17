@@ -13,11 +13,11 @@ keywords = ["gateway", "graphql", "federation"]
 graphgate-schema = { version = "0.5.0", path = "../schema" }
 graphgate-validation = { version = "0.5.0", path = "../validation" }
 
-parser = { version = "2.5.9", package = "async-graphql-parser" }
-value = { version = "2.5.9", package = "async-graphql-value" }
-indexmap = { version = "1.6.2", features = ["serde-1"] }
-serde = "1.0.125"
+parser = { version = "3.0.21", package = "async-graphql-parser" }
+value = { version = "3.0.21", package = "async-graphql-value" }
+indexmap = { version = "1.8.0", features = ["serde-1"] }
+serde = "1.0.133"
 
 [dev-dependencies]
-globset = "0.4.6"
-serde_json = "1.0.64"
+globset = "0.4.8"
+serde_json = "1.0.75"

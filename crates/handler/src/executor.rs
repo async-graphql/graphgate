@@ -94,7 +94,7 @@ impl<'e> Executor<'e> {
                                     .string(serde_json::to_string(&node.variables).unwrap()),
                             ];
                             let span = tracer
-                                .span_builder(&format!("subscribe [{}]", node.service))
+                                .span_builder(format!("subscribe [{}]", node.service))
                                 .with_attributes(attributes)
                                 .start(&tracer);
                             let cx = Context::current_with_span(span);
@@ -204,7 +204,7 @@ impl<'e> Executor<'e> {
 
         let tracer = global::tracer("graphql");
         let span = tracer
-            .span_builder(&format!("fetch [{}]", fetch.service))
+            .span_builder(format!("fetch [{}]", fetch.service))
             .with_attributes(vec![
                 KEY_SERVICE.string(fetch.service.to_string()),
                 KEY_QUERY.string(fetch.query.to_string()),
@@ -427,7 +427,7 @@ impl<'e> Executor<'e> {
 
         let tracer = global::tracer("graphql");
         let span = tracer
-            .span_builder(&format!("flatten [{}]", flatten.service))
+            .span_builder(format!("flatten [{}]", flatten.service))
             .with_attributes(vec![
                 KEY_SERVICE.string(flatten.service.to_string()),
                 KEY_QUERY.string(flatten.query.to_string()),
@@ -550,7 +550,7 @@ fn add_tracing_spans(response: &mut Response) {
         resolvers: Vec<TracingResolver>,
     }
 
-    #[derive(Default)]
+    #[derive(Default, Clone)]
     struct Path {
         path: String,
         parent_end: usize,
@@ -607,7 +607,7 @@ fn add_tracing_spans(response: &mut Response) {
         }
     }
 
-    #[derive(Deserialize)]
+    #[derive(Deserialize, Clone)]
     #[serde(rename_all = "camelCase")]
     struct TracingResolver {
         #[serde(deserialize_with = "deserialize_path")]
@@ -635,15 +635,19 @@ fn add_tracing_spans(response: &mut Response) {
     let tracer = global::tracer("graphql");
 
     let mut resolvers = HashMap::<_, Context>::new();
-    for resolver in &tracing_result.execution.resolvers {
+    for resolver in tracing_result.execution.resolvers {
         let attributes = vec![
             KEY_PARENT_TYPE.string(resolver.parent_type.clone()),
             KEY_RETURN_TYPE.string(resolver.return_type.clone()),
             KEY_FIELD_NAME.string(resolver.field_name.clone()),
         ];
 
+        let full_path = String::from(resolver.path.full_path());
+
+        let parent_path = String::from(resolver.path.parent_path());
+
         let mut span_builder = tracer
-            .span_builder(resolver.path.full_path())
+            .span_builder(full_path.clone())
             .with_start_time(
                 tracing_result.start_time + Duration::nanoseconds(resolver.start_offset),
             )
@@ -654,12 +658,12 @@ fn add_tracing_spans(response: &mut Response) {
             )
             .with_attributes(attributes);
 
-        if let Some(parent_cx) = resolvers.get(resolver.path.parent_path()) {
+        if let Some(parent_cx) = resolvers.get(&parent_path) {
             span_builder = span_builder.with_parent_context(parent_cx.clone());
         }
 
         resolvers.insert(
-            resolver.path.full_path(),
+            full_path,
             Context::current_with_span(span_builder.start(&tracer)),
         );
     }

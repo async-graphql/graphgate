@@ -13,7 +13,7 @@ use graphgate_handler::handler::HandlerConfig;
 use graphgate_handler::{handler, SharedRouteTable};
 use opentelemetry::global;
 use opentelemetry::global::GlobalTracerProvider;
-use opentelemetry::trace::NoopTracerProvider;
+use opentelemetry::trace::noop::NoopTracerProvider;
 use opentelemetry_prometheus::PrometheusExporter;
 use prometheus::{Encoder, TextEncoder};
 use structopt::StructOpt;
@@ -28,6 +28,11 @@ use warp::{Filter, Rejection, Reply};
 
 use config::Config;
 use options::Options;
+
+// Use Jemalloc only for musl-64 bits platforms
+#[cfg(all(target_env = "musl", target_pointer_width = "64"))]
+#[global_allocator]
+static ALLOC: jemallocator::Jemalloc = jemallocator::Jemalloc;
 
 fn init_tracing() {
     tracing_subscriber::registry()

@@ -1,12 +1,44 @@
-FROM rust:1.50 as builder
-RUN apt-get update && apt-get install -y libssl-dev
+###
+# Builder
+###
+FROM rust:latest as builder
 
-COPY . /tmp
-WORKDIR /tmp
-RUN cargo build --release
+RUN rustup target add x86_64-unknown-linux-musl
+RUN apt update && apt install -y musl-tools musl-dev
+RUN update-ca-certificates
 
-FROM ubuntu:18.04
-RUN apt-get update && apt-get install -y libssl-dev
-COPY --from=builder /tmp/target/release/graphgate /usr/bin/graphgate
+ENV USER=graphgate
+ENV UID=10001
 
-ENTRYPOINT [ "graphgate" ]
+
+RUN adduser \
+    --disabled-password \
+    --gecos "" \
+    --home "/nonexistent" \
+    --shell "/sbin/nologin" \
+    --no-create-home \
+    --uid "${UID}" \
+    "${USER}"
+
+WORKDIR /graphgate
+
+COPY ./ .
+
+RUN cargo build --target x86_64-unknown-linux-musl --release
+
+###
+# Final Image
+###
+
+FROM scratch
+
+COPY --from=builder /etc/passwd /etc/passwd
+COPY --from=builder /etc/group /etc/group
+
+WORKDIR /graphgate
+
+COPY --from=builder /graphgate/target/x86_64-unknown-linux-musl/release/graphgate ./
+
+USER graphgate:graphgate
+
+ENTRYPOINT [ "/graphgate/graphgate" ]

@@ -10,7 +10,7 @@ repository = "https://github.com/async-graphql/graphgate"
 keywords = ["gateway", "graphql", "federation"]
 
 [dependencies]
-parser = { version = "2.5.9", package = "async-graphql-parser" }
-value = { version = "2.5.9", package = "async-graphql-value" }
-thiserror = "1.0.24"
-indexmap = { version = "1.6.2", features = ["serde-1"] }
+parser = { version = "3.0.21", package = "async-graphql-parser" }
+value = { version = "3.0.21", package = "async-graphql-value" }
+thiserror = "1.0.30"
+indexmap = { version = "1.8.0", features = ["serde-1"] }
