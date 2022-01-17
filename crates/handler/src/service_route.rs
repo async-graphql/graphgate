@@ -83,14 +83,22 @@ impl ServiceRouteTable {
             }
         };
 
-        let resp = HTTP_CLIENT
+        let raw_resp = HTTP_CLIENT
             .post(&url)
             .headers(header_map.cloned().unwrap_or_default())
             .json(&request)
             .send()
             .and_then(|res| async move { res.error_for_status() })
-            .and_then(|res| res.json::<Response>())
             .await?;
+
+        let mut headers: HashMap<String, String> = HashMap::new();
+
+        for (key, val) in raw_resp.headers().iter() {
+            headers.insert(key.as_str().to_string(), val.to_str().unwrap().to_string());
+        }
+
+        let mut resp = raw_resp.json::<Response>().await?;
+        resp.headers = Some(headers);
         Ok(resp)
     }
 }

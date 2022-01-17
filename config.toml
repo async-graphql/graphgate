@@ -4,6 +4,9 @@ bind = "0.0.0.0:8000"
 # Forward headers to upstream services.
 forward_headers = []
 
+# Receive headers from upstream service and send to client
+receive_headers = []
+
 ## Optional CORS config
 ## If allow_any_origin is set to true it will override any origins set using the allow_origins option
 # [cors]

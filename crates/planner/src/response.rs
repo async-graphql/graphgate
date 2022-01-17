@@ -45,4 +45,7 @@ pub struct Response {
 
     #[serde(skip_serializing_if = "HashMap::is_empty", default)]
     pub extensions: HashMap<String, ConstValue>,
+
+    #[serde(skip_serializing)]
+    pub headers: Option<HashMap<String, String>>,
 }

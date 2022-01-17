@@ -73,6 +73,7 @@ impl<'a> PlanBuilder<'a> {
                     })
                     .collect(),
                 extensions: Default::default(),
+                headers: Default::default(),
             });
         }
         Ok(())

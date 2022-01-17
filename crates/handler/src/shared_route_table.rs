@@ -28,6 +28,7 @@ struct Inner {
 pub struct SharedRouteTable {
     inner: Arc<RwLock<Inner>>,
     tx: mpsc::UnboundedSender<Command>,
+    receive_headers: Vec<String>,
 }
 
 impl Default for SharedRouteTable {
@@ -39,6 +40,7 @@ impl Default for SharedRouteTable {
                 route_table: None,
             })),
             tx,
+            receive_headers: vec![],
         };
         tokio::spawn({
             let shared_route_table = shared_route_table.clone();
@@ -121,6 +123,10 @@ impl SharedRouteTable {
         self.tx.send(Command::Change(route_table)).ok();
     }
 
+    pub fn set_receive_headers(&mut self, receive_headers: Vec<String>) {
+        self.receive_headers = receive_headers;
+    }
+
     pub async fn get(&self) -> Option<(Arc<ComposedSchema>, Arc<ServiceRouteTable>)> {
         let (composed_schema, route_table) = {
             let inner = self.inner.read().await;
@@ -152,6 +158,7 @@ impl SharedRouteTable {
                             data: ConstValue::Null,
                             errors: vec![ServerError::new("Not ready.")],
                             extensions: Default::default(),
+                            headers: Default::default(),
                         })
                         .unwrap(),
                     )
@@ -181,9 +188,18 @@ impl SharedRouteTable {
             OpenTelemetryContext::current_with_span(tracer.span_builder("execute").start(&tracer)),
         )
         .await;
-        HttpResponse::builder()
-            .status(StatusCode::OK)
-            .body(serde_json::to_string(&resp).unwrap())
-            .unwrap()
+
+        let mut builder = HttpResponse::builder().status(StatusCode::OK);
+
+        match resp.headers.as_ref() {
+            Some(x) => {
+                for (k, v) in x.iter().filter(|&(k, _v)| self.receive_headers.contains(k)) {
+                    builder = builder.header(k, v);
+                }
+            }
+            _ => {}
+        }
+
+        builder.body(serde_json::to_string(&resp).unwrap()).unwrap()
     }
 }
