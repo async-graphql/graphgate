@@ -118,10 +118,11 @@ async fn main() -> Result<()> {
     let _uninstall = init_tracer(&config)?;
     let exporter = opentelemetry_prometheus::exporter().init();
 
-    let shared_route_table = SharedRouteTable::default();
+    let mut shared_route_table = SharedRouteTable::default();
     if !config.services.is_empty() {
         tracing::info!("Route table in the configuration file.");
         shared_route_table.set_route_table(config.create_route_table());
+        shared_route_table.set_receive_headers(config.receive_headers);
     } else if std::env::var("KUBERNETES_SERVICE_HOST").is_ok() {
         tracing::info!("Route table within the current namespace in Kubernetes cluster.");
         tokio::spawn(update_route_table_in_k8s(

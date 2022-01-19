@@ -15,6 +15,9 @@ pub struct Config {
     #[serde(default)]
     pub forward_headers: Vec<String>,
 
+    #[serde(default)]
+    pub receive_headers: Vec<String>,
+
     pub jaeger: Option<JaegerConfig>,
 
     pub cors: Option<CorsConfig>,

@@ -54,6 +54,7 @@ impl<'e> Executor<'e> {
                     extensions: Default::default(),
                 }],
                 extensions: Default::default(),
+                headers: Default::default(),
             },
         }
     }
@@ -123,6 +124,7 @@ impl<'e> Executor<'e> {
                                     extensions: Default::default(),
                                 }],
                                 extensions: Default::default(),
+                                headers: Default::default(),
                             }
                         })
                     }
@@ -219,6 +221,7 @@ impl<'e> Executor<'e> {
                 Ok(mut resp) => {
                     if resp.errors.is_empty() {
                         add_tracing_spans(&mut resp);
+                        current_resp.headers = resp.headers;
                         merge_data(&mut current_resp.data, resp.data);
                     } else {
                         rewrite_errors(None, &mut current_resp.errors, resp.errors);
