@@ -12,8 +12,8 @@ keywords = ["gateway", "graphql", "federation"]
 [dependencies]
 graphgate-schema = { version = "0.5.0", path = "../schema" }
 
-parser = { version = "3.0.21", package = "async-graphql-parser" }
-value = { version = "3.0.21", package = "async-graphql-value" }
+parser = { version = "3.0.24", package = "async-graphql-parser" }
+value = { version = "3.0.24", package = "async-graphql-value" }
 indexmap = { version = "1.8.0", features = ["serde-1"] }
 
 [dev-dependencies]

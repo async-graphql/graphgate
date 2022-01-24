@@ -33,8 +33,8 @@ prometheus = "0.12.0"
 version = "0.3.2"
 
 [dev-dependencies]
-async-graphql = { version = "3.0.21", features = ["apollo_tracing"] }
-async-graphql-warp = "3.0.21"
+async-graphql = { version = "3.0.24", features = ["apollo_tracing"] }
+async-graphql-warp = "3.0.24"
 fastrand = "1.6.0"
 async-stream = "0.3.2"
 futures-util = "0.3.19"
