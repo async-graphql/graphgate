@@ -10,6 +10,7 @@ use tokio::sync::{mpsc, RwLock};
 use tokio::time::{Duration, Instant};
 use value::ConstValue;
 use warp::http::{HeaderMap, Response as HttpResponse, StatusCode};
+use http::{HeaderValue, header::HeaderName};
 
 use crate::executor::Executor;
 use crate::fetcher::HttpFetcher;
@@ -191,13 +192,24 @@ impl SharedRouteTable {
 
         let mut builder = HttpResponse::builder().status(StatusCode::OK);
 
-        match resp.headers.as_ref() {
+        let mut header_map = HeaderMap::new();
+
+        match resp.headers.clone() {
             Some(x) => {
-                for (k, v) in x.iter().filter(|&(k, _v)| self.receive_headers.contains(k)) {
-                    builder = builder.header(k, v);
+                for (k, v) in x.into_iter().filter(|(k, _v)| self.receive_headers.contains(k)) {
+                    for val in v {
+                        header_map.append(HeaderName::from_bytes(k.as_bytes()).unwrap(), HeaderValue::from_str(&val).unwrap());
+                    }
                 }
             }
             _ => {}
+        }
+
+        match builder.headers_mut() {
+            Some(x) => {
+                x.extend(header_map)
+            },
+            None => {}
         }
 
         builder.body(serde_json::to_string(&resp).unwrap()).unwrap()
