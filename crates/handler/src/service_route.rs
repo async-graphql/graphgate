@@ -91,10 +91,20 @@ impl ServiceRouteTable {
             .and_then(|res| async move { res.error_for_status() })
             .await?;
 
-        let mut headers: HashMap<String, String> = HashMap::new();
+        let mut headers: HashMap<String, Vec<String>> = HashMap::new();
 
         for (key, val) in raw_resp.headers().iter() {
-            headers.insert(key.as_str().to_string(), val.to_str().unwrap().to_string());
+            match headers.get_mut(key.as_str()) {
+                Some(x) => {
+                    x.push(val.to_str().unwrap().to_string());
+                }
+                None => {
+                    headers.insert(
+                        key.as_str().to_string(),
+                        vec![val.to_str().unwrap().to_string()],
+                    );
+                }
+            }
         }
 
         let mut resp = raw_resp.json::<Response>().await?;
