@@ -99,7 +99,10 @@ impl ServiceRouteTable {
                     x.push(val.to_str().unwrap().to_string());
                 }
                 None => {
-                    headers.insert(key.as_str().to_string(), vec![val.to_str().unwrap().to_string()]);
+                    headers.insert(
+                        key.as_str().to_string(),
+                        vec![val.to_str().unwrap().to_string()],
+                    );
                 }
             }
         }

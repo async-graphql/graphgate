@@ -3,6 +3,7 @@ use std::sync::Arc;
 use anyhow::{Context, Error, Result};
 use graphgate_planner::{PlanBuilder, Request, Response, ServerError};
 use graphgate_schema::ComposedSchema;
+use http::{header::HeaderName, HeaderValue};
 use opentelemetry::trace::{TraceContextExt, Tracer};
 use opentelemetry::{global, Context as OpenTelemetryContext};
 use serde::Deserialize;
@@ -10,7 +11,6 @@ use tokio::sync::{mpsc, RwLock};
 use tokio::time::{Duration, Instant};
 use value::ConstValue;
 use warp::http::{HeaderMap, Response as HttpResponse, StatusCode};
-use http::{HeaderValue, header::HeaderName};
 
 use crate::executor::Executor;
 use crate::fetcher::HttpFetcher;
@@ -196,9 +196,15 @@ impl SharedRouteTable {
 
         match resp.headers.clone() {
             Some(x) => {
-                for (k, v) in x.into_iter().filter(|(k, _v)| self.receive_headers.contains(k)) {
+                for (k, v) in x
+                    .into_iter()
+                    .filter(|(k, _v)| self.receive_headers.contains(k))
+                {
                     for val in v {
-                        header_map.append(HeaderName::from_bytes(k.as_bytes()).unwrap(), HeaderValue::from_str(&val).unwrap());
+                        header_map.append(
+                            HeaderName::from_bytes(k.as_bytes()).unwrap(),
+                            HeaderValue::from_str(&val).unwrap(),
+                        );
                     }
                 }
             }
@@ -206,9 +212,7 @@ impl SharedRouteTable {
         }
 
         match builder.headers_mut() {
-            Some(x) => {
-                x.extend(header_map)
-            },
+            Some(x) => x.extend(header_map),
             None => {}
         }
 
