@@ -130,6 +130,7 @@ async fn main() -> Result<()> {
         shared_route_table.set_receive_headers(config.receive_headers);
     } else if std::env::var("KUBERNETES_SERVICE_HOST").is_ok() {
         tracing::info!("Route table within the current namespace in Kubernetes cluster.");
+        shared_route_table.set_receive_headers(config.receive_headers);
         tokio::spawn(update_route_table_in_k8s(
             shared_route_table.clone(),
             config.gateway_name.clone(),
