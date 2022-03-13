@@ -1,9 +1,8 @@
-use std::collections::HashSet;
-use std::fmt::{Display, Formatter, Result as FmtResult};
-
 use graphgate_schema::{ComposedSchema, TypeKind};
 use parser::types::{BaseType, Type};
-use value::ConstValue;
+use std::collections::HashSet;
+use std::fmt::{Display, Formatter, Result as FmtResult};
+use value::{ConstValue, Name};
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum Scope<'a> {
@@ -117,6 +116,18 @@ pub fn is_valid_input_value(
                                 } else {
                                     None
                                 }
+                            } else if let ConstValue::String(v) = value {
+                                if ty.enum_values.contains_key(&Name::new(v.to_string())) {
+                                    None
+                                } else {
+                                    Some(valid_error(
+                                        &path_node,
+                                        format!(
+                                            "enumeration type \"{}\" does not contain the value \"{}\"",
+                                            ty.name, value
+                                        )
+                                    ))
+                                }
                             } else {
                                 Some(valid_error(
                                     &path_node,
@@ -176,7 +187,6 @@ pub fn is_valid_input_value(
             }
         }
     }
-
     if !ty.nullable {
         if matches!(value, ConstValue::Null) {
             Some(valid_error(&path_node, format!("expected type \"{}\"", ty)))
