@@ -30,7 +30,7 @@ fn get_annotation_value<'a>(meta: &'a ObjectMeta, name: &str) -> Option<&'a str>
 }
 
 fn get_gateway_or_default(gateway_name: &str) -> String {
-    match gateway_name.len() > 0 {
+    match !gateway_name.is_empty() {
         true => {
             tracing::trace!(
                 "Found gateway name: {}. Looking for gateway labels instead.",
@@ -71,8 +71,7 @@ pub async fn find_graphql_services(gateway_name: &str) -> Result<ServiceRouteTab
             for service_port in service
                 .spec
                 .iter()
-                .map(|spec| spec.ports.iter())
-                .flatten()
+                .flat_map(|spec| spec.ports.iter())
                 .flatten()
             {
                 let tls = get_annotation_value(&service.metadata, ANNOTATIONS_TLS).is_some();
