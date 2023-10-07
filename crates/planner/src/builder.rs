@@ -619,6 +619,15 @@ impl<'a> Context<'a> {
         match fetch_entity_group.get_mut(&fetch_entity_key) {
             Some(fetch_entity) => {
                 fetch_entity.fields.push(field);
+                if meta_field.requires.is_some() {
+                    selection_ref_set
+                        .0
+                        .push(SelectionRef::RequiredRef(RequiredRef {
+                            prefix: self.key_id - 1,
+                            fields: keys,
+                            requires: meta_field.requires.as_ref(),
+                        }));
+                }
             }
             None => {
                 let prefix = self.take_key_prefix();
