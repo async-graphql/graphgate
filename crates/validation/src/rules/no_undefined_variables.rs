@@ -1,14 +1,16 @@
 use std::collections::{HashMap, HashSet};
 
 use graphgate_schema::ValueExt;
-use parser::types::{
-    ExecutableDocument, FragmentDefinition, FragmentSpread, OperationDefinition, VariableDefinition,
+use parser::{
+    types::{
+        ExecutableDocument, FragmentDefinition, FragmentSpread, OperationDefinition,
+        VariableDefinition,
+    },
+    Pos, Positioned,
 };
-use parser::{Pos, Positioned};
 use value::{Name, Value};
 
-use crate::utils::Scope;
-use crate::{Visitor, VisitorContext};
+use crate::{utils::Scope, Visitor, VisitorContext};
 
 #[derive(Default)]
 pub struct NoUndefinedVariables<'a> {
@@ -50,7 +52,7 @@ impl<'a> NoUndefinedVariables<'a> {
 
 impl<'a> Visitor<'a> for NoUndefinedVariables<'a> {
     fn exit_document(&mut self, ctx: &mut VisitorContext<'a>, _doc: &'a ExecutableDocument) {
-        for (op_name, &(ref def_pos, ref def_vars)) in &self.defined_variables {
+        for (op_name, (def_pos, def_vars)) in &self.defined_variables {
             let mut unused = Vec::new();
             let mut visited = HashSet::new();
             self.find_undef_vars(

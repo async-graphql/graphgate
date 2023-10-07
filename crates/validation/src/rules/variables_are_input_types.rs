@@ -1,5 +1,4 @@
-use parser::types::VariableDefinition;
-use parser::Positioned;
+use parser::{types::VariableDefinition, Positioned};
 
 use crate::{Visitor, VisitorContext};
 

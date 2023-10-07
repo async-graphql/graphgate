@@ -1,11 +1,15 @@
 use graphgate_schema::MetaInputValue;
 use indexmap::IndexMap;
-use parser::types::{Directive, Field};
-use parser::Positioned;
+use parser::{
+    types::{Directive, Field},
+    Positioned,
+};
 use value::{Name, Value};
 
-use crate::utils::{is_valid_input_value, PathNode};
-use crate::{Visitor, VisitorContext};
+use crate::{
+    utils::{is_valid_input_value, PathNode},
+    Visitor, VisitorContext,
+};
 
 #[derive(Default)]
 pub struct ArgumentsOfCorrectType<'a> {

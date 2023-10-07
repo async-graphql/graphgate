@@ -2,9 +2,11 @@ use graphgate_planner::IntrospectionSelectionSet;
 use graphgate_schema::ComposedSchema;
 use value::ConstValue;
 
-use super::r#type::IntrospectionType;
-use super::resolver::{resolve_obj, Resolver};
-use super::schema::IntrospectionSchema;
+use super::{
+    r#type::IntrospectionType,
+    resolver::{resolve_obj, Resolver},
+    schema::IntrospectionSchema,
+};
 
 pub struct IntrospectionRoot;
 

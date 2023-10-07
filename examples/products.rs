@@ -35,7 +35,7 @@ impl Subscription {
     async fn products(&self) -> impl Stream<Item = Product> {
         async_stream::stream! {
             loop {
-                tokio::time::sleep(Duration::from_secs(fastrand::u64((5..10)))).await;
+                tokio::time::sleep(Duration::from_secs(fastrand::u64(5..10))).await;
                 yield Product {
                     upc: "top-1".to_string(),
                     name: "Trilby".to_string(),

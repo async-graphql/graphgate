@@ -1,17 +1,17 @@
-use std::collections::HashMap;
-use std::ops::Deref;
+use std::{collections::HashMap, ops::Deref};
 
 use indexmap::{IndexMap, IndexSet};
-use parser::types::{
-    self, BaseType, ConstDirective, DirectiveDefinition, DirectiveLocation, DocumentOperations,
-    EnumType, InputObjectType, InterfaceType, ObjectType, SchemaDefinition, Selection,
-    SelectionSet, ServiceDocument, Type, TypeDefinition, TypeSystemDefinition, UnionType,
+use parser::{
+    types::{
+        self, BaseType, ConstDirective, DirectiveDefinition, DirectiveLocation, DocumentOperations,
+        EnumType, InputObjectType, InterfaceType, ObjectType, SchemaDefinition, Selection,
+        SelectionSet, ServiceDocument, Type, TypeDefinition, TypeSystemDefinition, UnionType,
+    },
+    Positioned, Result,
 };
-use parser::{Positioned, Result};
 use value::{ConstValue, Name};
 
-use crate::type_ext::TypeExt;
-use crate::CombineError;
+use crate::{type_ext::TypeExt, CombineError};
 
 #[derive(Debug, Eq, PartialEq)]
 pub enum Deprecation {
@@ -65,6 +65,21 @@ impl Deref for KeyFields {
 
     fn deref(&self) -> &Self::Target {
         &self.0
+    }
+}
+
+#[derive(Debug)]
+pub struct FederationVersion(f32);
+
+impl Default for FederationVersion {
+    fn default() -> Self {
+        Self(1.0)
+    }
+}
+
+impl From<f32> for FederationVersion {
+    fn from(version: f32) -> Self {
+        Self(version)
     }
 }
 
@@ -171,6 +186,7 @@ pub struct ComposedSchema {
     pub subscription_type: Option<Name>,
     pub types: IndexMap<Name, MetaType>,
     pub directives: HashMap<Name, MetaDirective>,
+    pub federation_version: FederationVersion,
 }
 
 impl ComposedSchema {
@@ -322,8 +338,37 @@ impl ComposedSchema {
                                 .insert(meta_type.name.clone(), meta_type);
                         }
                     }
-                    TypeSystemDefinition::Schema(_schema_definition) => {
-                        return Err(CombineError::SchemaIsNotAllowed)
+                    TypeSystemDefinition::Schema(schema_definition) => {
+                        if schema_definition.node.extend {
+                            let link: Vec<String> = schema_definition
+                                .node
+                                .directives
+                                .iter()
+                                .filter_map(|d| {
+                                    if d.node.name.node.as_str() == "link" {
+                                        get_argument_str(&d.node.arguments, "url")
+                                            .map(|key| key.node.to_string())
+                                    } else {
+                                        None
+                                    }
+                                })
+                                .collect();
+                            if link.len() == 1 {
+                                // "https://specs.apollo.dev/federation/v2.1"
+                                if let Some(version) =
+                                    link[0].to_ascii_lowercase().rsplit_once("/v")
+                                {
+                                    if let Ok(version) = version.1.parse::<f32>() {
+                                        if version > composed_schema.federation_version.0 {
+                                            composed_schema.federation_version = version.into();
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        if composed_schema.federation_version.0 == 1.0 {
+                            return Err(CombineError::SchemaIsNotAllowed);
+                        }
                     }
                     TypeSystemDefinition::Directive(_directive_definition) => {}
                 }

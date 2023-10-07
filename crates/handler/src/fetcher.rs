@@ -5,8 +5,7 @@ use graphgate_planner::{Request, Response};
 use http::HeaderMap;
 use tokio::sync::mpsc;
 
-use crate::websocket::WebSocketController;
-use crate::ServiceRouteTable;
+use crate::{websocket::WebSocketController, ServiceRouteTable};
 
 #[async_trait::async_trait]
 pub trait Fetcher: Send + Sync {

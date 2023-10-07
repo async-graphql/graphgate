@@ -1,10 +1,7 @@
-use parser::types::Field;
-use parser::Positioned;
-
 use graphgate_schema::TypeKind;
+use parser::{types::Field, Positioned};
 
-use crate::suggestion::make_suggestion;
-use crate::{Visitor, VisitorContext};
+use crate::{suggestion::make_suggestion, Visitor, VisitorContext};
 
 #[derive(Default)]
 pub struct FieldsOnCorrectType;

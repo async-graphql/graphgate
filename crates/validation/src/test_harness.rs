@@ -3,8 +3,10 @@ use once_cell::sync::Lazy;
 use parser::types::ExecutableDocument;
 use value::Variables;
 
-use crate::visitor::{visit, Visitor, VisitorContext};
-use crate::RuleError;
+use crate::{
+    visitor::{visit, Visitor, VisitorContext},
+    RuleError,
+};
 
 static SCHEMA: Lazy<ComposedSchema> =
     Lazy::new(|| ComposedSchema::parse(include_str!("test_harness.graphql")).unwrap());
@@ -18,7 +20,7 @@ where
     V: Visitor<'a> + 'a,
     F: Fn() -> V,
 {
-    let mut ctx = VisitorContext::new(&*SCHEMA, doc, variables);
+    let mut ctx = VisitorContext::new(&SCHEMA, doc, variables);
     let mut visitor = factory();
     visit(&mut visitor, &mut ctx, doc);
     if ctx.errors.is_empty() {

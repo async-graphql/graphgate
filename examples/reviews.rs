@@ -46,7 +46,7 @@ impl Product {
     }
 
     async fn error(&self) -> Result<i32, &str> {
-        return Err("custom error");
+        Err("custom error")
     }
 }
 
@@ -79,7 +79,7 @@ impl Subscription {
     async fn reviews(&self) -> impl Stream<Item = Review> {
         async_stream::stream! {
             loop {
-                tokio::time::sleep(Duration::from_secs(fastrand::u64((5..10)))).await;
+                tokio::time::sleep(Duration::from_secs(fastrand::u64(5..10))).await;
                 yield Review {
                     body: "A highly effective form of birth control.".into(),
                     author: User { id: "1234".into() },

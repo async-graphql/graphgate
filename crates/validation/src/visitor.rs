@@ -1,12 +1,14 @@
 use std::collections::HashMap;
 
 use graphgate_schema::{ComposedSchema, MetaType, TypeKind};
-use parser::types::{
-    BaseType, Directive, ExecutableDocument, Field, FragmentDefinition, FragmentSpread,
-    InlineFragment, OperationDefinition, OperationType, Selection, SelectionSet, Type,
-    TypeCondition, VariableDefinition,
+use parser::{
+    types::{
+        BaseType, Directive, ExecutableDocument, Field, FragmentDefinition, FragmentSpread,
+        InlineFragment, OperationDefinition, OperationType, Selection, SelectionSet, Type,
+        TypeCondition, VariableDefinition,
+    },
+    Pos, Positioned,
 };
-use parser::{Pos, Positioned};
 use value::{Name, Value, Variables};
 
 use crate::RuleError;

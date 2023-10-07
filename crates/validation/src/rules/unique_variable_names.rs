@@ -1,7 +1,9 @@
 use std::collections::HashSet;
 
-use parser::types::{OperationDefinition, VariableDefinition};
-use parser::Positioned;
+use parser::{
+    types::{OperationDefinition, VariableDefinition},
+    Positioned,
+};
 use value::Name;
 
 use crate::{Visitor, VisitorContext};

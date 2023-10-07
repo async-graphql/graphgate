@@ -4,17 +4,20 @@ use anyhow::{Context, Error, Result};
 use graphgate_planner::{PlanBuilder, Request, Response, ServerError};
 use graphgate_schema::ComposedSchema;
 use http::{header::HeaderName, HeaderValue};
-use opentelemetry::trace::{TraceContextExt, Tracer};
-use opentelemetry::{global, Context as OpenTelemetryContext};
+use opentelemetry::{
+    global,
+    trace::{TraceContextExt, Tracer},
+    Context as OpenTelemetryContext,
+};
 use serde::Deserialize;
-use tokio::sync::{mpsc, RwLock};
-use tokio::time::{Duration, Instant};
+use tokio::{
+    sync::{mpsc, RwLock},
+    time::{Duration, Instant},
+};
 use value::ConstValue;
 use warp::http::{HeaderMap, Response as HttpResponse, StatusCode};
 
-use crate::executor::Executor;
-use crate::fetcher::HttpFetcher;
-use crate::service_route::ServiceRouteTable;
+use crate::{executor::Executor, fetcher::HttpFetcher, service_route::ServiceRouteTable};
 
 enum Command {
     Change(ServiceRouteTable),
@@ -185,7 +188,7 @@ impl SharedRouteTable {
 
         let executor = Executor::new(&composed_schema);
         let resp = opentelemetry::trace::FutureExt::with_context(
-            executor.execute_query(&HttpFetcher::new(&*route_table, &header_map), &plan),
+            executor.execute_query(&HttpFetcher::new(&route_table, &header_map), &plan),
             OpenTelemetryContext::current_with_span(tracer.span_builder("execute").start(&tracer)),
         )
         .await;
@@ -194,27 +197,23 @@ impl SharedRouteTable {
 
         let mut header_map = HeaderMap::new();
 
-        match resp.headers.clone() {
-            Some(x) => {
-                for (k, v) in x
-                    .into_iter()
-                    .filter(|(k, _v)| self.receive_headers.contains(k))
-                {
-                    for val in v {
-                        header_map.append(
-                            HeaderName::from_bytes(k.as_bytes()).unwrap(),
-                            HeaderValue::from_str(&val).unwrap(),
-                        );
-                    }
+        if let Some(x) = resp.headers.clone() {
+            for (k, v) in x
+                .into_iter()
+                .filter(|(k, _v)| self.receive_headers.contains(k))
+            {
+                for val in v {
+                    header_map.append(
+                        HeaderName::from_bytes(k.as_bytes()).unwrap(),
+                        HeaderValue::from_str(&val).unwrap(),
+                    );
                 }
             }
-            _ => {}
         }
 
-        match builder.headers_mut() {
-            Some(x) => x.extend(header_map),
-            None => {}
-        }
+        if let Some(x) = builder.headers_mut() {
+            x.extend(header_map)
+        };
 
         builder.body(serde_json::to_string(&resp).unwrap()).unwrap()
     }

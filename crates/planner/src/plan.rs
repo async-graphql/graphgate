@@ -1,12 +1,16 @@
-use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
-use std::ops::{Deref, DerefMut};
+use std::{
+    fmt::{Debug, Display, Formatter, Result as FmtResult},
+    ops::{Deref, DerefMut},
+};
 
 use indexmap::IndexMap;
 use serde::{Serialize, Serializer};
 use value::{ConstValue, Name, Variables};
 
-use crate::types::{FetchQuery, VariablesRef};
-use crate::Request;
+use crate::{
+    types::{FetchQuery, VariablesRef},
+    Request,
+};
 
 #[derive(Debug, Serialize)]
 #[serde(tag = "type", rename_all = "lowercase")]

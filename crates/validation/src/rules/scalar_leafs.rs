@@ -1,5 +1,4 @@
-use parser::types::Field;
-use parser::Positioned;
+use parser::{types::Field, Positioned};
 
 use crate::{Visitor, VisitorContext};
 

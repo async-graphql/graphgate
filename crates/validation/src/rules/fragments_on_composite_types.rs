@@ -1,5 +1,7 @@
-use parser::types::{FragmentDefinition, InlineFragment};
-use parser::Positioned;
+use parser::{
+    types::{FragmentDefinition, InlineFragment},
+    Positioned,
+};
 use value::Name;
 
 use crate::{Visitor, VisitorContext};

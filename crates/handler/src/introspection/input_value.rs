@@ -2,8 +2,10 @@ use graphgate_planner::IntrospectionSelectionSet;
 use graphgate_schema::{ComposedSchema, MetaInputValue};
 use value::ConstValue;
 
-use super::r#type::IntrospectionType;
-use super::resolver::{resolve_obj, Resolver};
+use super::{
+    r#type::IntrospectionType,
+    resolver::{resolve_obj, Resolver},
+};
 
 pub struct IntrospectionInputValue<'a>(pub &'a MetaInputValue);
 

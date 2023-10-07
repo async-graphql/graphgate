@@ -42,7 +42,7 @@ impl Subscription {
     async fn users(&self) -> impl Stream<Item = User> {
         async_stream::stream! {
             loop {
-                tokio::time::sleep(Duration::from_secs(fastrand::u64((1..3)))).await;
+                tokio::time::sleep(Duration::from_secs(fastrand::u64(1..3))).await;
                 yield User { id: "1234".into(), username: "Me".to_string() };
             }
         }

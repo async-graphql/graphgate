@@ -1,7 +1,9 @@
 use std::collections::{HashMap, HashSet};
 
-use parser::types::{ExecutableDocument, FragmentDefinition, FragmentSpread};
-use parser::{Pos, Positioned};
+use parser::{
+    types::{ExecutableDocument, FragmentDefinition, FragmentSpread},
+    Pos, Positioned,
+};
 use value::Name;
 
 use crate::{RuleError, Visitor, VisitorContext};

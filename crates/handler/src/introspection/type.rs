@@ -4,10 +4,12 @@ use once_cell::sync::Lazy;
 use parser::types::{BaseType, Type};
 use value::{ConstValue, Name};
 
-use super::enum_value::IntrospectionEnumValue;
-use super::field::IntrospectionField;
-use super::input_value::IntrospectionInputValue;
-use super::resolver::{is_include_deprecated, resolve_obj, Resolver};
+use super::{
+    enum_value::IntrospectionEnumValue,
+    field::IntrospectionField,
+    input_value::IntrospectionInputValue,
+    resolver::{is_include_deprecated, resolve_obj, Resolver},
+};
 
 static SCALAR: Lazy<Name> = Lazy::new(|| Name::new("SCALAR"));
 static OBJECT: Lazy<Name> = Lazy::new(|| Name::new("OBJECT"));

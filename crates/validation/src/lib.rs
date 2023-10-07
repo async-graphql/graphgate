@@ -10,13 +10,11 @@ mod suggestion;
 mod utils;
 mod visitor;
 
+pub use error::RuleError;
 use graphgate_schema::ComposedSchema;
 use parser::types::ExecutableDocument;
 use value::Variables;
-
 use visitor::{visit, Visitor, VisitorContext, VisitorNil};
-
-pub use error::RuleError;
 
 macro_rules! rules {
     ($($rule:ident),*) => {
@@ -52,6 +50,6 @@ pub fn check_rules(
         VariablesAreInputTypes,
         VariableInAllowedPosition
     );
-    visit(&mut visitor, &mut ctx, &document);
+    visit(&mut visitor, &mut ctx, document);
     ctx.errors
 }

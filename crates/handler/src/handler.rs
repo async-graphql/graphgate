@@ -1,21 +1,21 @@
-use std::convert::{Infallible, TryInto};
-use std::net::SocketAddr;
-use std::str::FromStr;
-use std::sync::Arc;
+use std::{
+    convert::{Infallible, TryInto},
+    net::SocketAddr,
+    str::FromStr,
+    sync::Arc,
+    time::Instant,
+};
 
 use graphgate_planner::Request;
-use http::header::HeaderName;
-use http::HeaderMap;
-use opentelemetry::trace::{FutureExt, TraceContextExt, Tracer};
-use opentelemetry::{global, Context};
-use warp::http::Response as HttpResponse;
-use warp::ws::Ws;
-use warp::{Filter, Rejection, Reply};
+use http::{header::HeaderName, HeaderMap};
+use opentelemetry::{
+    global,
+    trace::{FutureExt, TraceContextExt, Tracer},
+    Context,
+};
+use warp::{http::Response as HttpResponse, ws::Ws, Filter, Rejection, Reply};
 
-use crate::constants::*;
-use crate::metrics::METRICS;
-use crate::{websocket, SharedRouteTable};
-use std::time::Instant;
+use crate::{constants::*, metrics::METRICS, websocket, SharedRouteTable};
 
 #[derive(Clone)]
 pub struct HandlerConfig {
@@ -80,8 +80,8 @@ pub fn graphql_request(
 
                     METRICS
                         .query_histogram
-                        .record((Instant::now() - start_time).as_secs_f64());
-                    METRICS.query_counter.add(1);
+                        .record((Instant::now() - start_time).as_secs_f64(), &[]);
+                    METRICS.query_counter.add(1, &[]);
 
                     Ok::<_, Infallible>(resp)
                 }

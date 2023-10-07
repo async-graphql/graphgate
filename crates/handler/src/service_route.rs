@@ -1,5 +1,7 @@
-use std::collections::HashMap;
-use std::ops::{Deref, DerefMut};
+use std::{
+    collections::HashMap,
+    ops::{Deref, DerefMut},
+};
 
 use futures_util::TryFutureExt;
 use graphgate_planner::{Request, Response};

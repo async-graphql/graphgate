@@ -2,10 +2,14 @@ use std::fmt::{Display, Formatter, Result as FmtResult};
 
 use graphgate_schema::{KeyFields, MetaType};
 use indexmap::IndexMap;
-use parser::types::{Directive, Field, OperationType, VariableDefinition};
-use parser::Positioned;
-use serde::ser::{SerializeSeq, SerializeStruct};
-use serde::{Serialize, Serializer};
+use parser::{
+    types::{Directive, Field, OperationType, VariableDefinition},
+    Positioned,
+};
+use serde::{
+    ser::{SerializeSeq, SerializeStruct},
+    Serialize, Serializer,
+};
 use value::{ConstValue, Name, Value, Variables};
 
 use crate::plan::ResponsePath;
@@ -138,7 +142,7 @@ fn stringify_key_fields(f: &mut Formatter<'_>, prefix: usize, fields: &KeyFields
 
     for (field_name, children) in fields.iter() {
         write!(f, " __key{}_{}:{}", prefix, field_name, field_name)?;
-        stringify_key_fields_no_prefix(f, &children)?;
+        stringify_key_fields_no_prefix(f, children)?;
     }
     Ok(())
 }
@@ -176,9 +180,9 @@ fn stringify_selection_ref_set_rec(
             }
             SelectionRef::RequiredRef(require_ref) => {
                 write!(f, "__key{}___typename:__typename", require_ref.prefix,)?;
-                stringify_key_fields(f, require_ref.prefix, &require_ref.fields)?;
+                stringify_key_fields(f, require_ref.prefix, require_ref.fields)?;
                 if let Some(requires) = require_ref.requires {
-                    stringify_key_fields(f, require_ref.prefix, &requires)?;
+                    stringify_key_fields(f, require_ref.prefix, requires)?;
                 }
             }
             SelectionRef::InlineFragment {
@@ -289,7 +293,7 @@ impl<'a> Serialize for VariableDefinitionsRef<'a> {
 
         let mut s = serializer.serialize_seq(None)?;
         for item in &self.variables {
-            s.serialize_element(&VariableDefinitionRef(*item))?;
+            s.serialize_element(&VariableDefinitionRef(item))?;
         }
         s.end()
     }

@@ -1,26 +1,28 @@
 use std::collections::HashMap;
 
 use chrono::{DateTime, Duration, Utc};
-use futures_util::future::BoxFuture;
-use futures_util::stream::BoxStream;
-use futures_util::StreamExt;
+use futures_util::{future::BoxFuture, stream::BoxStream, StreamExt};
 use graphgate_planner::{
-    FetchNode, FlattenNode, IntrospectionNode, ParallelNode, PathSegment, PlanNode, ResponsePath,
-    RootNode, SequenceNode, SubscribeNode,
+    FetchNode, FlattenNode, IntrospectionNode, ParallelNode, PathSegment, PlanNode, Request,
+    Response, ResponsePath, RootNode, SequenceNode, ServerError, SubscribeNode,
 };
-use graphgate_planner::{Request, Response, ServerError};
 use graphgate_schema::ComposedSchema;
 use indexmap::IndexMap;
-use opentelemetry::trace::{FutureExt, TraceContextExt, Tracer};
-use opentelemetry::{global, Context};
+use opentelemetry::{
+    global,
+    trace::{FutureExt, TraceContextExt, Tracer},
+    Context,
+};
 use serde::{Deserialize, Deserializer};
 use tokio::sync::{mpsc, Mutex};
 use value::{ConstValue, Name, Variables};
 
-use crate::constants::*;
-use crate::fetcher::{Fetcher, WebSocketFetcher};
-use crate::introspection::{IntrospectionRoot, Resolver};
-use crate::websocket::WebSocketController;
+use crate::{
+    constants::*,
+    fetcher::{Fetcher, WebSocketFetcher},
+    introspection::{IntrospectionRoot, Resolver},
+    websocket::WebSocketController,
+};
 
 /// Query plan executor
 pub struct Executor<'e> {
@@ -519,12 +521,12 @@ fn rewrite_errors(
             path.extend(err.path.drain(1..));
         }
 
-        for subpath in err.path.iter() {
-            match subpath {
-                ConstValue::String(x) => path.push(ConstValue::String(x.to_string())),
-                _ => {}
-            }
-        }
+        err.path
+            .iter()
+            .filter(|x| matches!(x, ConstValue::String(_)))
+            .for_each(|x| {
+                path.push(x.clone());
+            });
 
         target.push(ServerError {
             message: err.message,
@@ -646,7 +648,7 @@ fn add_tracing_spans(response: &mut Response) {
 
         let parent_path = String::from(resolver.path.parent_path());
 
-        let mut span_builder = tracer
+        let span_builder = tracer
             .span_builder(full_path.clone())
             .with_start_time(
                 tracing_result.start_time + Duration::nanoseconds(resolver.start_offset),
@@ -658,13 +660,12 @@ fn add_tracing_spans(response: &mut Response) {
             )
             .with_attributes(attributes);
 
-        if let Some(parent_cx) = resolvers.get(&parent_path) {
-            span_builder = span_builder.with_parent_context(parent_cx.clone());
-        }
+        let span = if let Some(parent_cx) = resolvers.get(&parent_path) {
+            span_builder.start_with_context(&tracer, parent_cx)
+        } else {
+            span_builder.start(&tracer)
+        };
 
-        resolvers.insert(
-            full_path,
-            Context::current_with_span(span_builder.start(&tracer)),
-        );
+        resolvers.insert(full_path, Context::current_with_span(span));
     }
 }

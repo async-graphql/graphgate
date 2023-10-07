@@ -1,7 +1,9 @@
 use std::collections::HashSet;
 
-use parser::types::{Directive, Field};
-use parser::Positioned;
+use parser::{
+    types::{Directive, Field},
+    Positioned,
+};
 use value::{Name, Value};
 
 use crate::{Visitor, VisitorContext};

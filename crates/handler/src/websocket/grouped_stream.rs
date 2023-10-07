@@ -1,12 +1,12 @@
-use std::borrow::Borrow;
-use std::collections::HashMap;
-use std::hash::Hash;
-use std::pin::Pin;
-use std::task::{Context, Poll};
+use std::{
+    borrow::Borrow,
+    collections::HashMap,
+    hash::Hash,
+    pin::Pin,
+    task::{Context, Poll},
+};
 
-use futures_util::stream::Stream;
-use futures_util::task::AtomicWaker;
-use futures_util::StreamExt;
+use futures_util::{stream::Stream, task::AtomicWaker, StreamExt};
 
 pub struct GroupedStream<K, S> {
     streams: HashMap<K, S>,

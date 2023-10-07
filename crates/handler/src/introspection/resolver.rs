@@ -32,7 +32,7 @@ pub fn resolve_obj(
 
 fn is_skip(directives: &[IntrospectionDirective]) -> bool {
     for directive in directives {
-        let include = match &*directive.name.as_str() {
+        let include = match directive.name.as_str() {
             "skip" => false,
             "include" => true,
             _ => continue,

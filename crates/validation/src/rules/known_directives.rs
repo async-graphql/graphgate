@@ -1,8 +1,10 @@
-use parser::types::{
-    Directive, DirectiveLocation, Field, FragmentDefinition, FragmentSpread, InlineFragment,
-    OperationDefinition, OperationType,
+use parser::{
+    types::{
+        Directive, DirectiveLocation, Field, FragmentDefinition, FragmentSpread, InlineFragment,
+        OperationDefinition, OperationType,
+    },
+    Positioned,
 };
-use parser::Positioned;
 use value::Name;
 
 use crate::{Visitor, VisitorContext};

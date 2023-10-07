@@ -1,21 +1,30 @@
-use std::collections::{HashMap, HashSet};
-use std::str::FromStr;
-use std::sync::Arc;
+use std::{
+    collections::{HashMap, HashSet},
+    str::FromStr,
+    sync::Arc,
+};
 
 use anyhow::Result;
-use futures_util::stream::{SplitSink, SplitStream};
-use futures_util::{SinkExt, StreamExt};
+use futures_util::{
+    stream::{SplitSink, SplitStream},
+    SinkExt, StreamExt,
+};
 use graphgate_planner::{Request, Response};
 use http::{HeaderMap, Request as HttpRequest};
-use tokio::net::TcpStream;
-use tokio::sync::{mpsc, oneshot};
-use tokio::time::Duration;
-use tokio_tungstenite::tungstenite::protocol::CloseFrame;
-use tokio_tungstenite::tungstenite::{Message, Result as WsResult};
-use tokio_tungstenite::{MaybeTlsStream, WebSocketStream};
+use tokio::{
+    net::TcpStream,
+    sync::{mpsc, oneshot},
+    time::Duration,
+};
+use tokio_tungstenite::{
+    tungstenite::{protocol::CloseFrame, Message, Result as WsResult},
+    MaybeTlsStream, WebSocketStream,
+};
 
-use super::grouped_stream::{GroupedStream, StreamEvent};
-use super::protocol::{ClientMessage, Protocols, ServerMessage};
+use super::{
+    grouped_stream::{GroupedStream, StreamEvent},
+    protocol::{ClientMessage, Protocols, ServerMessage},
+};
 use crate::ServiceRouteTable;
 
 const CONNECT_TIMEOUT_SECONDS: u64 = 5;
@@ -173,8 +182,7 @@ impl WebSocketContext {
             .headers()
             .get("Sec-WebSocket-Protocol")
             .and_then(|value| value.to_str().ok())
-            .map(|value| Protocols::from_str(value).ok())
-            .flatten()
+            .and_then(|value| Protocols::from_str(value).ok())
             .ok_or_else(|| anyhow::anyhow!("Unknown protocol: {}", url))?;
 
         stream

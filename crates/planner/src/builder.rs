@@ -4,23 +4,27 @@ use std::collections::HashMap;
 
 use graphgate_schema::{ComposedSchema, KeyFields, MetaField, MetaType, TypeKind, ValueExt};
 use indexmap::IndexMap;
-use parser::types::{
-    BaseType, DocumentOperations, ExecutableDocument, Field, FragmentDefinition,
-    OperationDefinition, OperationType, Selection, SelectionSet, Type, VariableDefinition,
+use parser::{
+    types::{
+        BaseType, DocumentOperations, ExecutableDocument, Field, FragmentDefinition,
+        OperationDefinition, OperationType, Selection, SelectionSet, Type, VariableDefinition,
+    },
+    Positioned,
 };
-use parser::Positioned;
 use value::{ConstValue, Name, Value, Variables};
 
-use crate::plan::{
-    FetchNode, FlattenNode, IntrospectionDirective, IntrospectionField, IntrospectionNode,
-    IntrospectionSelectionSet, ParallelNode, PathSegment, PlanNode, ResponsePath, SequenceNode,
+use crate::{
+    plan::{
+        FetchNode, FlattenNode, IntrospectionDirective, IntrospectionField, IntrospectionNode,
+        IntrospectionSelectionSet, ParallelNode, PathSegment, PlanNode, ResponsePath, SequenceNode,
+    },
+    types::{
+        FetchEntity, FetchEntityGroup, FetchEntityKey, FetchQuery, FieldRef, MutationRootGroup,
+        QueryRootGroup, RequiredRef, RootGroup, SelectionRef, SelectionRefSet,
+        VariableDefinitionsRef, VariablesRef,
+    },
+    Response, RootNode, ServerError, SubscribeNode,
 };
-use crate::types::{
-    FetchEntity, FetchEntityGroup, FetchEntityKey, FetchQuery, FieldRef, MutationRootGroup,
-    QueryRootGroup, RequiredRef, RootGroup, SelectionRef, SelectionRefSet, VariableDefinitionsRef,
-    VariablesRef,
-};
-use crate::{Response, RootNode, ServerError, SubscribeNode};
 
 #[derive(Debug)]
 struct Context<'a> {
@@ -529,7 +533,7 @@ impl<'a> Context<'a> {
         let service = match field_definition
             .service
             .as_deref()
-            .or_else(|| parent_type.owner.as_deref())
+            .or(parent_type.owner.as_deref())
         {
             Some(service) => service,
             None => current_service,
@@ -553,7 +557,7 @@ impl<'a> Context<'a> {
                     fetch_entity_group,
                     parent_type,
                     field,
-                    &field_definition,
+                    field_definition,
                     service,
                     keys,
                 );
@@ -574,7 +578,7 @@ impl<'a> Context<'a> {
                 &mut sub_selection_set,
                 fetch_entity_group,
                 current_service,
-                &field_type,
+                field_type,
                 &field.selection_set.node,
             );
         } else {

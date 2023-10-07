@@ -1,11 +1,12 @@
 use graphgate_schema::MetaInputValue;
 use indexmap::IndexMap;
-use parser::types::{Directive, Field};
-use parser::Positioned;
+use parser::{
+    types::{Directive, Field},
+    Positioned,
+};
 use value::{Name, Value};
 
-use crate::suggestion::make_suggestion;
-use crate::{Visitor, VisitorContext};
+use crate::{suggestion::make_suggestion, Visitor, VisitorContext};
 
 enum ArgsType<'a> {
     Directive(&'a str),
@@ -26,8 +27,7 @@ impl<'a> KnownArgumentNames<'a> {
             " Did you mean",
             self.current_args
                 .iter()
-                .map(|(args, _)| args.iter().map(|arg| arg.0.as_str()))
-                .flatten(),
+                .flat_map(|(args, _)| args.iter().map(|arg| arg.0.as_str())),
             name,
         )
         .unwrap_or_default()

@@ -1,8 +1,9 @@
-use parser::types::VariableDefinition;
-use parser::Positioned;
+use parser::{types::VariableDefinition, Positioned};
 
-use crate::utils::{is_valid_input_value, PathNode};
-use crate::{Visitor, VisitorContext};
+use crate::{
+    utils::{is_valid_input_value, PathNode},
+    Visitor, VisitorContext,
+};
 
 #[derive(Default)]
 pub struct DefaultValuesOfCorrectType;

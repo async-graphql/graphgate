@@ -4,30 +4,22 @@ mod config;
 mod k8s;
 mod options;
 
-use std::net::SocketAddr;
-use std::sync::Arc;
+use std::{net::SocketAddr, sync::Arc};
 
 use anyhow::{Context, Result};
-use futures_util::FutureExt;
-use graphgate_handler::handler::HandlerConfig;
-use graphgate_handler::{handler, SharedRouteTable};
-use opentelemetry::global;
-use opentelemetry::global::GlobalTracerProvider;
-use opentelemetry::trace::noop::NoopTracerProvider;
-use opentelemetry_prometheus::PrometheusExporter;
-use prometheus::{Encoder, TextEncoder};
-use structopt::StructOpt;
-use tokio::signal;
-use tokio::time::Duration;
-use tracing_subscriber::layer::SubscriberExt;
-use tracing_subscriber::util::SubscriberInitExt;
-use tracing_subscriber::{fmt, EnvFilter};
-use warp::http::Response as HttpResponse;
-use warp::hyper::StatusCode;
-use warp::{Filter, Rejection, Reply};
-
 use config::Config;
+use futures_util::FutureExt;
+use graphgate_handler::{handler, handler::HandlerConfig, SharedRouteTable};
+use opentelemetry::{
+    global, global::GlobalTracerProvider, sdk::metrics::MeterProvider,
+    trace::noop::NoopTracerProvider,
+};
 use options::Options;
+use prometheus::{Encoder, Registry, TextEncoder};
+use structopt::StructOpt;
+use tokio::{signal, time::Duration};
+use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
+use warp::{http::Response as HttpResponse, hyper::StatusCode, Filter, Rejection, Reply};
 
 // Use Jemalloc only for musl-64 bits platforms
 #[cfg(all(target_env = "musl", target_pointer_width = "64"))]
@@ -73,8 +65,8 @@ fn init_tracer(config: &Config) -> Result<GlobalTracerProvider> {
                 service_name = %config.service_name,
                 "Initialize Jaeger"
             );
-            let provider = opentelemetry_jaeger::new_pipeline()
-                .with_agent_endpoint(&config.agent_endpoint)
+            let provider = opentelemetry_jaeger::new_agent_pipeline()
+                .with_endpoint(&config.agent_endpoint)
                 .with_service_name(&config.service_name)
                 .build_batch(opentelemetry::runtime::Tokio)
                 .context("Failed to initialize jaeger.")?;
@@ -89,13 +81,13 @@ fn init_tracer(config: &Config) -> Result<GlobalTracerProvider> {
 }
 
 pub fn metrics(
-    exporter: PrometheusExporter,
+    registry: Registry,
 ) -> impl Filter<Extract = (impl Reply,), Error = Rejection> + Clone {
     warp::path!("metrics").and(warp::get()).map({
         move || {
             let mut buffer = Vec::new();
             let encoder = TextEncoder::new();
-            let metric_families = exporter.registry().gather();
+            let metric_families = registry.gather();
             if let Err(err) = encoder.encode(&metric_families, &mut buffer) {
                 return HttpResponse::builder()
                     .status(StatusCode::INTERNAL_SERVER_ERROR)
@@ -121,7 +113,12 @@ async fn main() -> Result<()> {
     )
     .with_context(|| format!("Failed to parse config file '{}'.", options.config))?;
     let _uninstall = init_tracer(&config)?;
-    let exporter = opentelemetry_prometheus::exporter().init();
+    let registry = Registry::new();
+    let exporter = opentelemetry_prometheus::exporter()
+        .with_registry(registry.clone())
+        .build()?;
+    let meter_provider = MeterProvider::builder().with_reader(exporter).build();
+    global::set_meter_provider(meter_provider);
 
     let mut shared_route_table = SharedRouteTable::default();
     if !config.services.is_empty() {
@@ -189,14 +186,14 @@ async fn main() -> Result<()> {
         .parse()
         .context(format!("Failed to parse bind addr '{}'", config.bind))?;
     if let Some(warp_cors) = cors {
-        let routes = graphql.or(health).or(metrics(exporter)).with(warp_cors);
+        let routes = graphql.or(health).or(metrics(registry)).with(warp_cors);
         let (addr, server) = warp::serve(routes)
             .bind_with_graceful_shutdown(bind_addr, signal::ctrl_c().map(|_| ()));
         tracing::info!(addr = %addr, "Listening");
         server.await;
         tracing::info!("Server shutdown");
     } else {
-        let routes = graphql.or(health).or(metrics(exporter));
+        let routes = graphql.or(health).or(metrics(registry));
         let (addr, server) = warp::serve(routes)
             .bind_with_graceful_shutdown(bind_addr, signal::ctrl_c().map(|_| ()));
         tracing::info!(addr = %addr, "Listening");

@@ -2,9 +2,11 @@ use graphgate_planner::IntrospectionSelectionSet;
 use graphgate_schema::{ComposedSchema, MetaField};
 use value::ConstValue;
 
-use super::input_value::IntrospectionInputValue;
-use super::r#type::IntrospectionType;
-use super::resolver::{resolve_obj, Resolver};
+use super::{
+    input_value::IntrospectionInputValue,
+    r#type::IntrospectionType,
+    resolver::{resolve_obj, Resolver},
+};
 
 pub struct IntrospectionField<'a>(pub &'a MetaField);
 

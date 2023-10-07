@@ -1,7 +1,9 @@
 use std::collections::HashMap;
 
-use parser::types::{Field, Selection, SelectionSet};
-use parser::Positioned;
+use parser::{
+    types::{Field, Selection, SelectionSet},
+    Positioned,
+};
 
 use crate::{Visitor, VisitorContext};
 
@@ -38,7 +40,7 @@ impl<'a, 'ctx> FindConflicts<'a, 'ctx> {
                         .as_ref()
                         .map(|name| &name.node)
                         .unwrap_or_else(|| &field.node.name.node);
-                    self.add_output(&output_name, field);
+                    self.add_output(output_name, field);
                 }
                 Selection::InlineFragment(inline_fragment) => {
                     self.find(&inline_fragment.node.selection_set);

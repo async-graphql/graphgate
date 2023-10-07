@@ -1,11 +1,12 @@
 use std::collections::{HashMap, HashSet};
 
-use parser::types::{ExecutableDocument, FragmentDefinition, FragmentSpread, OperationDefinition};
-use parser::{Pos, Positioned};
+use parser::{
+    types::{ExecutableDocument, FragmentDefinition, FragmentSpread, OperationDefinition},
+    Pos, Positioned,
+};
 use value::Name;
 
-use crate::utils::Scope;
-use crate::{Visitor, VisitorContext};
+use crate::{utils::Scope, Visitor, VisitorContext};
 
 #[derive(Default)]
 pub struct NoUnusedFragments<'a> {

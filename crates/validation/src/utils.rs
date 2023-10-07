@@ -1,5 +1,7 @@
-use std::collections::HashSet;
-use std::fmt::{Display, Formatter, Result as FmtResult};
+use std::{
+    collections::HashSet,
+    fmt::{Display, Formatter, Result as FmtResult},
+};
 
 use graphgate_schema::{ComposedSchema, TypeKind};
 use parser::types::{BaseType, Type};

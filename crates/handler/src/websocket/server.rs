@@ -1,20 +1,17 @@
 use std::sync::Arc;
 
-use futures_util::sink::Sink;
-use futures_util::stream::Stream;
-use futures_util::{SinkExt, StreamExt};
+use futures_util::{sink::Sink, stream::Stream, SinkExt, StreamExt};
 use graphgate_planner::{PlanBuilder, Response, ServerError};
 use graphgate_schema::ComposedSchema;
 use value::ConstValue;
-use warp::http::HeaderMap;
-use warp::ws::Message;
-use warp::Error;
+use warp::{http::HeaderMap, ws::Message, Error};
 
-use super::controller::WebSocketController;
-use super::grouped_stream::{GroupedStream, StreamEvent};
-use super::protocol::{ClientMessage, ConnectionError, Protocols, ServerMessage};
-use crate::executor::Executor;
-use crate::ServiceRouteTable;
+use super::{
+    controller::WebSocketController,
+    grouped_stream::{GroupedStream, StreamEvent},
+    protocol::{ClientMessage, ConnectionError, Protocols, ServerMessage},
+};
+use crate::{executor::Executor, ServiceRouteTable};
 
 pub async fn server(
     schema: Arc<ComposedSchema>,
