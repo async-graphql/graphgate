@@ -68,7 +68,7 @@ impl Deref for KeyFields {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, PartialOrd)]
 pub struct FederationVersion(f32);
 
 impl Default for FederationVersion {
@@ -340,24 +340,27 @@ impl ComposedSchema {
                     }
                     TypeSystemDefinition::Schema(schema_definition) => {
                         if schema_definition.node.extend {
-                            let link: Vec<String> = schema_definition
+                            let path = "/federation/v";
+                            let federation_link: Vec<String> = schema_definition
                                 .node
                                 .directives
                                 .iter()
                                 .filter_map(|d| {
-                                    if d.node.name.node.as_str() == "link" {
-                                        get_argument_str(&d.node.arguments, "url")
+                                    if d.node.name.node.as_str() == "link"
+                                        && get_argument_str(&d.node.arguments, "url")
                                             .map(|key| key.node.to_string())
+                                            .unwrap_or_default()
+                                            .contains(path)
+                                    {
+                                        get_argument_str(&d.node.arguments, "url")
+                                            .map(|key| key.node.to_ascii_lowercase())
                                     } else {
                                         None
                                     }
                                 })
                                 .collect();
-                            if link.len() == 1 {
-                                // "https://specs.apollo.dev/federation/v2.1"
-                                if let Some(version) =
-                                    link[0].to_ascii_lowercase().rsplit_once("/v")
-                                {
+                            if federation_link.len() == 1 {
+                                if let Some(version) = federation_link[0].rsplit_once(path) {
                                     if let Ok(version) = version.1.parse::<f32>() {
                                         if version > composed_schema.federation_version.0 {
                                             composed_schema.federation_version = version.into();
@@ -366,7 +369,7 @@ impl ComposedSchema {
                                 }
                             }
                         }
-                        if composed_schema.federation_version.0 == 1.0 {
+                        if composed_schema.federation_version == FederationVersion::default() {
                             return Err(CombineError::SchemaIsNotAllowed);
                         }
                     }
