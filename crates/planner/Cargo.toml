@@ -1,6 +1,6 @@
 [package]
 name = "graphgate-planner"
-version = "0.5.1"
+version = "0.6.0"
 authors = ["Sunli <scott_s829@163.com>"]
 edition = "2021"
 description = "GraphGate is Apollo Federation implemented in Rust"
@@ -10,14 +10,13 @@ repository = "https://github.com/async-graphql/graphgate"
 keywords = ["gateway", "graphql", "federation"]
 
 [dependencies]
-graphgate-schema = { version = "0.5.0", path = "../schema" }
-graphgate-validation = { version = "0.5.0", path = "../validation" }
-
-indexmap = { version = "2.0.2", features = ["serde"] }
-parser = { version = "6", package = "async-graphql-parser" }
-serde = "1.0.188"
-value = { version = "6", package = "async-graphql-value" }
+graphgate-schema.workspace = true
+graphgate-validation.workspace = true
+indexmap.workspace = true
+parser.workspace = true
+serde.workspace = true
+value.workspace = true
 
 [dev-dependencies]
-globset = "0.4.13"
-serde_json = "1.0.107"
+globset.workspace = true
+serde_json.workspace = true

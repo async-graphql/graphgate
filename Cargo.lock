@@ -89,20 +89,6 @@ checksum = "71938f30533e4d95a6d17aa530939da3842c2ab6f4f84b9dae68447e4129f74a"
 
 [[package]]
 name = "async-compression"
-version = "0.3.15"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "942c7cd7ae39e91bde4820d74132e9862e62c2f386c3aa90ccf55949f5bad63a"
-dependencies = [
- "brotli",
- "flate2",
- "futures-core",
- "memchr",
- "pin-project-lite",
- "tokio",
-]
-
-[[package]]
-name = "async-compression"
 version = "0.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bb42b2197bf15ccb092b62c74515dbd8b86d0effd934795f6687c93b6e679a2c"
@@ -771,7 +757,7 @@ dependencies = [
 
 [[package]]
 name = "graphgate"
-version = "0.5.1"
+version = "0.6.0"
 dependencies = [
  "anyhow",
  "async-graphql",
@@ -798,7 +784,7 @@ dependencies = [
 
 [[package]]
 name = "graphgate-handler"
-version = "0.5.1"
+version = "0.6.0"
 dependencies = [
  "anyhow",
  "async-graphql-parser",
@@ -817,7 +803,6 @@ dependencies = [
  "serde",
  "serde_json",
  "tokio",
- "tokio-stream",
  "tokio-tungstenite",
  "tracing",
  "warp",
@@ -825,7 +810,7 @@ dependencies = [
 
 [[package]]
 name = "graphgate-planner"
-version = "0.5.1"
+version = "0.6.0"
 dependencies = [
  "async-graphql-parser",
  "async-graphql-value",
@@ -839,7 +824,7 @@ dependencies = [
 
 [[package]]
 name = "graphgate-schema"
-version = "0.5.1"
+version = "0.6.0"
 dependencies = [
  "async-graphql-parser",
  "async-graphql-value",
@@ -849,7 +834,7 @@ dependencies = [
 
 [[package]]
 name = "graphgate-validation"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "async-graphql-parser",
  "async-graphql-value",
@@ -1814,7 +1799,7 @@ version = "0.11.22"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "046cd98826c46c2ac8ddecae268eb5c2e58628688a5fc7a2643704a73faba95b"
 dependencies = [
- "async-compression 0.4.3",
+ "async-compression",
  "base64 0.21.4",
  "bytes",
  "encoding_rs",
@@ -2792,7 +2777,6 @@ version = "0.3.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c1e92e22e03ff1230c03a1a8ee37d2f89cd489e2e541b7550d6afad96faed169"
 dependencies = [
- "async-compression 0.3.15",
  "bytes",
  "futures-channel",
  "futures-util",

@@ -1,6 +1,6 @@
 [package]
 name = "graphgate-handler"
-version = "0.5.1"
+version = "0.6.0"
 authors = ["Sunli <scott_s829@163.com>"]
 edition = "2021"
 description = "GraphGate is Apollo Federation implemented in Rust"
@@ -10,25 +10,23 @@ repository = "https://github.com/async-graphql/graphgate"
 keywords = ["gateway", "graphql", "federation"]
 
 [dependencies]
-graphgate-schema = { version = "0.5.0", path = "../schema" }
-graphgate-planner = { version = "0.5.0", path = "../planner" }
-
-anyhow = "1.0.75"
-async-stream = "0.3.5"
-async-trait = "0.1.73"
-chrono = { version = "0.4.31", features = ["serde"] }
-futures-util = { version = "0.3.19", features = ["sink"] }
-http = "0.2.6"
-indexmap = { version = "2.0.2", features = ["serde"] }
-once_cell = "1.18.0"
-opentelemetry = { version = "0.20.0", features = ["metrics"] }
-parser = { version = "6", package = "async-graphql-parser" }
-reqwest = { version = "0.11.22", default-features = false, features = ["rustls-tls", "gzip", "brotli", "json"] }
-serde = "1.0.188"
-serde_json = "1.0.107"
-tokio = { version = "1.32.0", features = ["net", "sync", "macros", "time"] }
-tokio-stream = "0.1.14"
-tokio-tungstenite = { version = "0.20.1", features = ["rustls-tls-native-roots"] }
-tracing = "0.1.29"
-value = { version = "6", package = "async-graphql-value" }
-warp = "0.3.6"
+anyhow.workspace = true
+async-stream.workspace = true
+async-trait.workspace = true
+chrono.workspace = true
+futures-util.workspace = true
+graphgate-planner.workspace = true
+graphgate-schema.workspace = true
+http.workspace = true
+indexmap.workspace = true
+once_cell.workspace = true
+opentelemetry.workspace = true
+parser.workspace = true
+reqwest.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio-tungstenite.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+value.workspace = true
+warp.workspace = true

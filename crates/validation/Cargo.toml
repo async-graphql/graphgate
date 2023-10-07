@@ -1,6 +1,6 @@
 [package]
 name = "graphgate-validation"
-version = "0.5.0"
+version = "0.6.0"
 authors = ["Sunli <scott_s829@163.com>"]
 edition = "2021"
 description = "GraphGate is Apollo Federation implemented in Rust"
@@ -10,11 +10,10 @@ repository = "https://github.com/async-graphql/graphgate"
 keywords = ["gateway", "graphql", "federation"]
 
 [dependencies]
-graphgate-schema = { version = "0.5.0", path = "../schema" }
-
-indexmap = { version = "2.0.2", features = ["serde"] }
-parser = { version = "6", package = "async-graphql-parser" }
-value = { version = "6", package = "async-graphql-value" }
+graphgate-schema.workspace = true
+indexmap.workspace = true
+parser.workspace = true
+value.workspace = true
 
 [dev-dependencies]
-once_cell = "1.18.0"
+once_cell.workspace = true
