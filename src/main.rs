@@ -22,7 +22,7 @@ use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, Env
 use warp::{http::Response as HttpResponse, hyper::StatusCode, Filter, Rejection, Reply};
 
 // Use Jemalloc only for musl-64 bits platforms
-#[cfg(all(target_env = "musl", target_pointer_width = "64"))]
+#[cfg(all(target_arch = "x86_64", target_env = "musl", target_pointer_width = "64"))]
 #[global_allocator]
 static ALLOC: jemallocator::Jemalloc = jemallocator::Jemalloc;
 

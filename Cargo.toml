@@ -28,7 +28,7 @@ tracing = "0.1.29"
 tracing-subscriber = { version = "0.3.6", features = ["env-filter"] }
 warp.workspace = true
 
-[target.'cfg(all(target_env = "musl", target_pointer_width = "64"))'.dependencies.jemallocator]
+[target.x86_64-unknown-linux-musl.dependencies.jemallocator]
 version = "0.5.4"
 
 [dev-dependencies]
